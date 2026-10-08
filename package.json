@@ -5,6 +5,8 @@
     "dev": "node scripts/dev.mjs",
     "build": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix frontend",
+    "test:ui:portal": "node scripts/portal-updates-smoke.cjs",
+    "test:ui:renewals": "node scripts/renewal-invoices-smoke.cjs",
     "test": "npm run test --prefix frontend && python -m pytest backend/tests",
     "supabase:sync-admins": "python backend/scripts/sync_admin_profiles.py",
     "start": "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000"

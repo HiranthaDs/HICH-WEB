@@ -26,9 +26,9 @@ services:
       - key: ADMIN_EMAILS
         sync: false
       - key: PUBLIC_APP_URL
-        sync: false
+        value: https://hich-web.onrender.com
       - key: FRONTEND_ORIGINS
-        sync: false
+        value: https://hich-web.onrender.com
       - key: SUPABASE_SECRET_KEY
         sync: false
       - key: TOKEN_HASH_PEPPER

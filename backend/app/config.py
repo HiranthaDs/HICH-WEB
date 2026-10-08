@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +27,15 @@ class Settings(BaseSettings):
 
     frontend_origins: str = "http://localhost:5173"
     public_app_url: AnyHttpUrl = "http://localhost:8000"
+    render_external_url: AnyHttpUrl | None = None
+    deletion_pin: SecretStr = SecretStr("2113")
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Hich Web"
+    smtp_ssl: bool = False
 
     access_cookie_name: str = "hich_access"
     refresh_cookie_name: str = "hich_refresh"
@@ -66,6 +75,20 @@ class Settings(BaseSettings):
     def blank_domain_is_none(cls, value: object) -> object:
         return None if value == "" else value
 
+    @field_validator("public_app_url", "render_external_url", mode="after")
+    @classmethod
+    def public_origin_only(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is None:
+            return None
+        parsed = urlsplit(str(value))
+        return AnyHttpUrl(urlunsplit((parsed.scheme, parsed.netloc, "", "", "")))
+
+    @model_validator(mode="after")
+    def production_public_url(self) -> "Settings":
+        if self.environment == "production" and self.render_external_url and self.public_app_url.host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+            self.public_app_url = self.render_external_url
+        return self
+
     @property
     def admin_email_set(self) -> frozenset[str]:
         return frozenset(
@@ -75,6 +98,9 @@ class Settings(BaseSettings):
     @property
     def allowed_origins(self) -> list[str]:
         origins = [item.strip().rstrip("/") for item in self.frontend_origins.split(",") if item.strip()]
+        # Render provides this trusted environment value, independent of proxy Host headers.
+        if self.render_external_url:
+            origins.append(str(self.render_external_url).rstrip("/"))
         # Browsers treat localhost and 127.0.0.1 as distinct origins. Both are
         # common entry points for Vite/Uvicorn during local development.
         if self.environment != "production":

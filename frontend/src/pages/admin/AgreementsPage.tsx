@@ -7,7 +7,8 @@ import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Mod
 import { useToast } from '../../context/ToastContext'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDate, getClientName } from '../../lib/format'
-import type { Agreement, AgreementTemplate, Client } from '../../lib/types'
+import type { Agreement, AgreementTemplate, Client, Invoice } from '../../lib/types'
+import { agreementMessage } from '../../lib/messages'
 
 type AgreementForm = Partial<Agreement> & { termsText?: string }
 const blankAgreement: AgreementForm = { title: 'Website & Systems Development Agreement', project_title: '', client_id: '', description: '', termsText: '', amount: 0, currency: 'LKR', expires_at: '', status: 'draft' }
@@ -26,6 +27,10 @@ export function AgreementsPage() {
   const { toast } = useToast()
   const [agreements, setAgreements] = useState<Agreement[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [clientQuery, setClientQuery] = useState('')
+  const [prefillBusy, setPrefillBusy] = useState(false)
+  const [prefillError, setPrefillError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [params, setParams] = useSearchParams()
@@ -47,9 +52,10 @@ export function AgreementsPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const [agreementResult, clientResult, templateResult] = await Promise.all([api.agreements.list(), api.clients.list(), api.agreements.template()])
+      const [agreementResult, clientResult, templateResult, invoiceResult] = await Promise.all([api.agreements.list(), api.clients.list(), api.agreements.template(), api.invoices.list()])
       setAgreements(agreementResult.items); setClients(clientResult.items)
       setTemplate(templateResult)
+      setInvoices(invoiceResult.items.filter(invoice => invoice.status !== 'void'))
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Agreements could not be loaded.') }
     finally { setLoading(false) }
   }, [])
@@ -58,7 +64,7 @@ export function AgreementsPage() {
   const filtered = useMemo(() => agreements.filter((agreement) => {
     const name = getClientName(agreement.client, agreement.client_name)
     return (!clientFilter || String(agreement.client_id) === clientFilter) && (!query || [agreement.title, agreement.reference, agreement.project_title, name].join(' ').toLowerCase().includes(query.toLowerCase())) && (status === 'all' || agreement.status === status)
-  }), [agreements, query, status, clientFilter])
+  }).sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || '')), [agreements, query, status, clientFilter])
 
   const refreshClients = useCallback(async () => {
     setLoadingClients(true)
@@ -72,20 +78,33 @@ export function AgreementsPage() {
     setEditing(agreement || 'new')
     setForm(agreement ? { ...agreement, termsText: termsText(agreement.terms) } : { ...blankAgreement, title: template?.title || blankAgreement.title, description: template?.description || '', termsText: termsText(template?.terms), client_id: client?.id || '', client_name: client?.name || '', client_phone: client?.phone || '', client_email: client?.email || '' })
     setMenu(null)
+    setClientQuery(''); setPrefillError('')
     void refreshClients()
   }, [clients, clientFilter, template, refreshClients])
+
+  const fillInvoice = useCallback(async (id: string) => {
+    setPrefillBusy(true); setPrefillError('')
+    try {
+      const data = await api.agreements.fromInvoice(id)
+      setForm(current => ({ ...current, ...data, title: current.title || data.title, termsText: termsText(data.terms) }))
+      toast('Client, project, payments and renewal details copied from the invoice.', 'success')
+    } catch (e) { setPrefillError(e instanceof Error ? e.message : 'Invoice details could not be copied.') }
+    finally { setPrefillBusy(false) }
+  }, [toast])
 
   useEffect(() => {
     if (loading || error || params.get('create') !== '1') return
     openEditor()
+    if (params.get('invoice')) void fillInvoice(params.get('invoice')!)
     const next = new URLSearchParams(params)
     next.delete('create')
     setParams(next, { replace: true })
-  }, [loading, error, params, openEditor, setParams])
+  }, [loading, error, params, openEditor, setParams, fillInvoice])
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
     if (saving) return
+    if (prefillBusy || prefillError) return toast('Finish copying the invoice details before saving.', 'error')
     if (!form.title?.trim() || !form.client_name?.trim() || !form.client_phone?.trim() || !form.project_title?.trim() || !Number(form.amount)) return toast('Add the client name, phone, project name and budget.', 'error')
     setSaving(true)
     const payload: Partial<Agreement> = {
@@ -98,10 +117,13 @@ export function AgreementsPage() {
       expected_version: editing === 'new' ? undefined : form.version,
       renewal_amount: Number(form.renewal_amount || 0), renewal_currency: form.renewal_currency || 'LKR', renewal_due_date: form.renewal_due_date || '',
       expires_at: form.expires_at ? new Date(`${form.expires_at.slice(0, 10)}T23:59:59+05:30`).toISOString() : '',
+      source_invoice_id: form.source_invoice_id, visiting_fee_lkr: Number(form.visiting_fee_lkr || 0),
+      payment_schedule: form.payment_schedule || [], payment_instructions: form.payment_instructions,
+      project_due_date: form.project_due_date,
     }
     try {
       // An edited agreement can also be reassigned to a new shared client record.
-      if (editing !== 'new' && !form.client_id) {
+      if (!form.client_id) {
         const client = await api.clients.create({ name: form.client_name!.trim(), phone: form.client_phone!.trim(), email: form.client_email?.trim() || undefined, status: 'active' })
         payload.client_id = client.id
         setForm(current => ({ ...current, client_id: client.id }))
@@ -132,7 +154,7 @@ export function AgreementsPage() {
 
   const duplicate = (agreement: Agreement) => {
     setEditing('new')
-    setForm({ ...blankAgreement, title: agreement.title, project_title: agreement.project_title, description: agreement.description, amount: agreement.amount, currency: agreement.currency, termsText: termsText(agreement.terms), renewal_amount: agreement.renewal_amount, renewal_currency: agreement.renewal_currency, renewal_due_date: agreement.renewal_due_date })
+    setForm({ ...blankAgreement, title: agreement.title, project_title: agreement.project_title, description: agreement.description, amount: agreement.amount, currency: agreement.currency, termsText: termsText(agreement.terms), visiting_fee_lkr: agreement.visiting_fee_lkr, payment_schedule: agreement.payment_schedule?.map(phase => ({ ...phase, is_paid: false, received_amount: 0, paid_at: undefined })), payment_instructions: agreement.payment_instructions, renewal_amount: agreement.renewal_amount, renewal_currency: agreement.renewal_currency, renewal_due_date: agreement.renewal_due_date })
     setMenu(null)
   }
 
@@ -142,11 +164,11 @@ export function AgreementsPage() {
     setMenu(null)
   }
 
-  const remove = async () => {
+  const remove = async (pin: string) => {
     if (!deleting) return
     setDeleteBusy(true)
     try {
-      await api.agreements.remove(deleting.id)
+      await api.agreements.remove(deleting.id, pin)
       setAgreements((current) => deleting.status === 'draft' ? current.filter((item) => item.id !== deleting.id) : current.map((item) => item.id === deleting.id ? { ...item, status: 'void' } : item))
       toast(deleting.status === 'draft' ? 'Draft agreement deleted.' : 'Agreement voided.', 'success')
       setDeleting(null)
@@ -176,7 +198,10 @@ export function AgreementsPage() {
 
     <Modal open={Boolean(editing)} onClose={() => setEditing(null)} title={editing === 'new' ? 'Create an agreement' : 'Edit agreement'} description="The client will review this information before providing a secure signature." size="lg" footer={<><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="agreement-form" loading={saving}>{editing === 'new' ? 'Create signing link' : 'Save changes'}</Button></>}>
       <form id="agreement-form" className="form-grid" onSubmit={save}>
-        <Select className="form-grid__full" label="Client record" hint={loadingClients ? 'Refreshing client records…' : 'Clients created in invoices are available here. Select a client to fill their details.'} value={String(form.client_id || '')} onChange={event => { const client = clients.find(c => String(c.id) === event.target.value); setForm({ ...form, client_id: event.target.value, client_name: client?.name || '', client_phone: client?.phone || '', client_email: client?.email || '' }) }}><option value="">New client - enter details below</option>{clients.map(client => <option value={String(client.id)} key={client.id}>{client.company ? `${client.company} - ${client.name}` : client.name}</option>)}</Select>
+        <Select className="form-grid__full" label="Copy from invoice" value={String(form.source_invoice_id || '')} disabled={prefillBusy || saving} onChange={event => { if (event.target.value) void fillInvoice(event.target.value); else { setPrefillError(''); setForm(current => ({ ...current, source_invoice_id: null })) } }} hint="Copies client details, project amount, payment milestones, payment instructions and renewal dates."><option value="">Choose an invoice to fill this agreement</option>{invoices.filter(invoice => !form.client_id || String(invoice.client_id) === String(form.client_id)).map(invoice => <option key={invoice.id} value={String(invoice.id)}>{invoice.reference} — {invoice.project_title} — {invoice.client_name}</option>)}</Select>
+        {prefillBusy && <p className="form-grid__full" role="status">Copying invoice details…</p>}{prefillError && <p className="form-grid__full negative" role="alert">{prefillError}</p>}
+        <div className="form-grid__full"><SearchInput label="Search client records" placeholder="Search client name, company, email or phone…" value={clientQuery} onChange={setClientQuery} /></div>
+        <Select className="form-grid__full" label="Client record" hint={loadingClients ? 'Refreshing client records…' : 'Clients created in invoices are available here. Select a client to fill their details.'} value={String(form.client_id || '')} onChange={event => { const client = clients.find(c => String(c.id) === event.target.value); setForm({ ...form, client_id: event.target.value, source_invoice_id: null, payment_schedule: [], client_name: client?.name || '', client_phone: client?.phone || '', client_email: client?.email || '' }) }}><option value="">New client - enter details below</option>{clients.filter(client => String(client.id) === String(form.client_id) || [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())).map(client => <option value={String(client.id)} key={client.id}>{client.company ? `${client.company} - ${client.name}` : client.name}</option>)}</Select>
         <Input label="Agreement ID" value={form.reference || ''} onChange={event => setForm({ ...form, reference: event.target.value })} placeholder="Auto-generated, or HICH-AGR-001" optional />
         <Input label="Client name" value={form.client_name || ''} onChange={event => setForm({ ...form, client_name: event.target.value })} required />
         <Input label="Client phone number" type="tel" value={form.client_phone || ''} onChange={event => setForm({ ...form, client_phone: event.target.value })} placeholder="+94 77 123 4567" required />
@@ -185,7 +210,9 @@ export function AgreementsPage() {
         <Input label="Project title" value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder="Project or engagement name" required />
         <Input label="Project budget" type="number" min="0.01" step="0.01" required value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} />
         <Select label="Currency" value={form.currency || 'LKR'} onChange={(event) => setForm({ ...form, currency: event.target.value })}><option value="LKR">LKR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></Select>
+        <Input label="Visiting fee (LKR)" type="number" min="0" max="15000" step="0.01" value={form.visiting_fee_lkr || ''} onChange={event => setForm({ ...form, visiting_fee_lkr: Number(event.target.value) })} hint="Zero for no visit, otherwise LKR 5,000?15,000. Collected before the visit and credited once to the final balance." optional />
         <Input label="Signing deadline" type="date" value={form.expires_at?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} optional />
+        {Boolean(form.payment_schedule?.length) && <section className="form-grid__full agreement-section"><h3>Payment schedule from invoice</h3>{form.payment_schedule?.map((phase, index) => <p key={index}>{phase.name}: {formatCurrency(Number(phase.amount), form.currency)} ? {phase.is_paid ? 'Received' : 'Pending'}</p>)}<p>These amounts form part of the agreement. Record later payments through the invoice.</p></section>}
         <Textarea className="form-grid__full" label="Project scope and included deliverables" value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} placeholder="Describe the engagement, deliverables and intended outcome…" />
         <Input label="Annual renewal amount" type="number" step="0.01" min="0" value={form.renewal_amount ?? ''} onChange={event => setForm({ ...form, renewal_amount: Number(event.target.value) })} placeholder="Hosting, domain and maintenance" optional />
         <Select label="Renewal currency" value={form.renewal_currency || 'LKR'} onChange={event => setForm({ ...form, renewal_currency: event.target.value })}><option value="LKR">LKR - Sri Lankan rupee</option><option value="USD">USD - US dollar</option><option value="GBP">GBP - British pound</option></Select>
@@ -194,7 +221,7 @@ export function AgreementsPage() {
         <p className="form-grid__full field-hint">{template?.review_note || 'Review the scope, fees and general terms before sharing. Obtain local legal review before using the template commercially.'}</p>
       </form>
     </Modal>
-    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title="Share agreement" description="The link opens the project summary, full terms and signature form.">{shared?.share_url && <SharePanel url={shared.share_url} title={`${shared.reference || shared.title} - ${shared.project_title}`} phone={shared.client_phone} email={shared.client_email} />}</Modal>
+    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title="Share agreement" description="The link opens the project summary, full terms and signature form.">{shared?.share_url && <SharePanel url={shared.share_url} title={agreementMessage(shared).subject} phone={shared.client_phone} email={shared.client_email} message={agreementMessage(shared).body} />}</Modal>
     <ConfirmDialog open={Boolean(deleting)} onClose={() => setDeleting(null)} onConfirm={remove} loading={deleteBusy} title={`${deleting?.status === 'draft' ? 'Delete draft' : 'Void agreement'} “${deleting?.title || 'agreement'}”?`} description={deleting?.status === 'draft' ? 'This unused draft will be permanently removed.' : 'The agreement stays in the audit record, but its signing link will stop working.'} confirmLabel={deleting?.status === 'draft' ? 'Delete draft' : 'Void agreement'} warning={deleting?.status === 'draft' ? 'This action cannot be undone.' : 'A void agreement remains available for historical accuracy.'} />
   </div>
 }

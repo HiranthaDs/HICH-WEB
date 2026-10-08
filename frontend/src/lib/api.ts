@@ -10,6 +10,8 @@ import type {
   PublicAgreement,
   SignAgreementPayload,
   User,
+  PortalUser,
+  IncomeReport,
   AgreementTemplate,
   InvoiceVersion,
   OperationTask,
@@ -45,6 +47,12 @@ export class ApiError extends Error {
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown }
 
+export function deletionPin(): string {
+  const pin = window.prompt('Enter the deletion PIN to confirm this action:')
+  if (!pin) throw new ApiError('Deletion cancelled.', 0)
+  return pin
+}
+
 function errorMessage(details: unknown, fallback: string) {
   if (!details || typeof details !== 'object') return fallback
   const record = details as Record<string, unknown>
@@ -71,6 +79,9 @@ function errorMessage(details: unknown, fallback: string) {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}, retried = false): Promise<T> {
+  if (!retried && (options.method === 'DELETE' || path.endsWith('/void')) && !(options.headers as Record<string, string> | undefined)?.['X-Deletion-PIN']) {
+    options = { ...options, headers: { ...options.headers, 'X-Deletion-PIN': deletionPin() } }
+  }
   const isForm = options.body instanceof FormData
   const body: BodyInit | undefined = options.body === undefined
     ? undefined
@@ -155,7 +166,17 @@ async function download(path: string, fallbackName: string) {
 }
 
 export const api = {
+  communications: {
+    emailStatus: () => request<{ available: boolean; sender?: string }>('/communications/email-status'),
+    email: (to: string, subject: string, body: string) => request<{ message: string }>('/communications/email', { method: 'POST', body: { to, subject, body } }),
+  },
+  async income(start: string, end: string) { return unwrap<IncomeReport>(await request(`/income?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`), ['income']) },
   auth: {
+    changePassword: (current_password: string, password: string) => request<{ message: string }>('/auth/change-password', { method: 'POST', body: { current_password, password } }),
+    async users() { return unwrap<PortalUser[]>(await request('/auth/users'), ['users']) },
+    inviteUser: (data: { email: string; full_name: string; role: string }) => request<{ message: string; user: PortalUser }>('/auth/users', { method: 'POST', body: data }),
+    async updateUser(id: string, data: { full_name: string; role: string; active: boolean }) { return unwrap<PortalUser>(await request(`/auth/users/${id}`, { method: 'PUT', body: data, headers: data.active ? undefined : { 'X-Deletion-PIN': deletionPin() } }), ['user']) },
+    recoverUser: (id: string) => request<{ message: string }>(`/auth/users/${id}/recover`, { method: 'POST' }),
     recover: (email: string) => request<{ message: string }>('/auth/recover', { method: 'POST', body: { email } }),
     resetPassword: (access_token: string, refresh_token: string, password: string) => request<{ message: string }>('/auth/reset-password', { method: 'POST', body: { access_token, refresh_token, password } }),
     async login(email: string, password: string) {
@@ -176,15 +197,16 @@ export const api = {
     async list() { return listAll<Client>('/clients', ['clients']) },
     async profile(id: Client['id']) { return unwrap<ClientProfile>(await request(`/clients/${encodeURIComponent(String(id))}/profile`), ['profile']) },
     async create(data: Partial<Client>) { return unwrap<Client>(await request('/clients', { method: 'POST', body: data }), ['client']) },
-    async update(id: Client['id'], data: Partial<Client>) { return unwrap<Client>(await request(`/clients/${id}`, { method: 'PUT', body: data }), ['client']) },
-    remove: (id: Client['id']) => request<void>(`/clients/${id}`, { method: 'DELETE' }),
+    async update(id: Client['id'], data: Partial<Client>, pin?: string) { return unwrap<Client>(await request(`/clients/${id}`, { method: 'PUT', body: data, headers: pin ? { 'X-Deletion-PIN': pin } : undefined }), ['client']) },
+    remove: (id: Client['id'], pin?: string) => request<void>(`/clients/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
   },
   agreements: {
+    async fromInvoice(id: Invoice['id']) { return unwrap<Partial<Agreement>>(await request(`/agreements/from-invoice/${id}`), ['agreement']) },
     async template() { return unwrap<AgreementTemplate>(await request('/agreements/template'), ['template']) },
     async list() { return listAll<Agreement>('/agreements', ['agreements']) },
     async create(data: Partial<Agreement>) { return unwrap<Agreement>(await request('/agreements', { method: 'POST', body: data }), ['agreement']) },
     async update(id: Agreement['id'], data: Partial<Agreement>) { return unwrap<Agreement>(await request(`/agreements/${id}`, { method: 'PUT', body: data }), ['agreement']) },
-    remove: (id: Agreement['id']) => request<void>(`/agreements/${id}`, { method: 'DELETE' }),
+    remove: (id: Agreement['id'], pin?: string) => request<void>(`/agreements/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
     async share(id: Agreement['id']) {
       const payload = await request<unknown>(`/agreements/${id}/share`, { method: 'POST' })
       return unwrap<{ url?: string; share_url?: string; token?: string }>(payload, ['share'])
@@ -192,20 +214,25 @@ export const api = {
     pdf: (id: Agreement['id'], reference = 'agreement') => download(`/agreements/${id}/pdf`, `${reference}.pdf`),
   },
   invoices: {
+    async createRenewal(id: Invoice['id'], data: { renewal_period_date: string; items: NonNullable<Invoice['renewal_items']>; currency: string; due_date: string; apply_late_fee: boolean; late_fee_accepted: boolean; customer_note?: string }) { return unwrap<Invoice>(await request(`/invoices/${id}/renewal-invoice`, { method: 'POST', body: data }), ['invoice']) },
+    async get(id: Invoice['id']) { return unwrap<Invoice>(await request(`/invoices/${id}`), ['invoice']) },
+    async recordPayment(id: Invoice['id'], data: { milestone_id?: string | null; amount: number; currency: string; method?: string; reference?: string; paid_at: string }) { return unwrap<Invoice>(await request(`/invoices/${id}/payments`, { method: 'POST', body: data }), ['invoice']) },
+    async updatePayment(id: Invoice['id'], paymentId: string, data: { milestone_id?: string | null; amount: number; currency: string; method?: string; reference?: string; paid_at: string }, pin?: string) { return unwrap<Invoice>(await request(`/invoices/${id}/payments/${paymentId}`, { method: 'PUT', body: data, headers: pin ? { 'X-Deletion-PIN': pin } : undefined }), ['invoice']) },
+    removePayment: (id: Invoice['id'], paymentId: string) => request(`/invoices/${id}/payments/${paymentId}`, { method: 'DELETE' }),
     async share(id: Invoice['id'], options: { rotate?: boolean; expires_at?: string | null } = {}) { return request<{ share_url: string; expires_at?: string; invoice?: Invoice }>(`/invoices/${id}/share`, { method: 'POST', body: options }) },
     revoke: (id: Invoice['id']) => request<void>(`/invoices/${id}/share`, { method: 'DELETE' }),
     async versions(id: Invoice['id']) { return unwrap<InvoiceVersion[]>(await request(`/invoices/${id}/versions`), ['versions']) },
     async list() { return listAll<Invoice>('/invoices', ['invoices']) },
     async create(data: Partial<Invoice>) { return unwrap<Invoice>(await request('/invoices', { method: 'POST', body: data }), ['invoice']) },
-    async update(id: Invoice['id'], data: Partial<Invoice>) { return unwrap<Invoice>(await request(`/invoices/${id}`, { method: 'PUT', body: data }), ['invoice']) },
-    remove: (id: Invoice['id']) => request<void>(`/invoices/${id}`, { method: 'DELETE' }),
+    async update(id: Invoice['id'], data: Partial<Invoice>, pin?: string) { return unwrap<Invoice>(await request(`/invoices/${id}`, { method: 'PUT', body: data, headers: pin ? { 'X-Deletion-PIN': pin } : undefined }), ['invoice']) },
+    remove: (id: Invoice['id'], pin?: string) => request<void>(`/invoices/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
   },
   portfolio: {
     async list() { return unwrapList<PortfolioProject>(await request('/portfolio'), ['projects', 'portfolio']) },
     async get(id: PortfolioProject['id']) { return unwrap<PortfolioProject>(await request(`/portfolio/${id}`), ['project']) },
     async create(data: Partial<PortfolioProject>) { return unwrap<PortfolioProject>(await request('/portfolio', { method: 'POST', body: data }), ['project']) },
     async update(id: PortfolioProject['id'], data: Partial<PortfolioProject>) { return unwrap<PortfolioProject>(await request(`/portfolio/${id}`, { method: 'PUT', body: data }), ['project']) },
-    remove: (id: PortfolioProject['id']) => request<void>(`/portfolio/${id}`, { method: 'DELETE' }),
+    remove: (id: PortfolioProject['id'], pin?: string) => request<void>(`/portfolio/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
     async uploadImages(id: PortfolioProject['id'], files: File[]) {
       const body = new FormData()
       files.forEach((file) => body.append('images', file))
@@ -222,7 +249,9 @@ export const api = {
     async tasks() { return unwrap<OperationTask[]>(await request('/operations/tasks'), ['tasks']) },
     async createTask(data: Partial<OperationTask>) { return unwrap<OperationTask>(await request('/operations/tasks', { method: 'POST', body: data }), ['task']) },
     async updateTask(id: string, data: Partial<OperationTask>) { return unwrap<OperationTask>(await request(`/operations/tasks/${id}`, { method: 'PATCH', body: data }), ['task']) },
+    removeTask: (id: string) => request(`/operations/tasks/${id}`, { method: 'DELETE' }),
     async changes() { return unwrap<ChangeOrder[]>(await request('/operations/changes'), ['changes']) },
+    async updateChange(id: string, data: Partial<ChangeOrder>) { return unwrap<ChangeOrder>(await request(`/operations/changes/${id}`, { method: 'PUT', body: data }), ['change']) },
     async createChange(data: Partial<ChangeOrder>) { return unwrap<ChangeOrder>(await request('/operations/changes', { method: 'POST', body: data }), ['change']) },
     async shareChange(id: string) { return request<{ share_url: string }>(`/operations/changes/${id}/share`, { method: 'POST' }) },
     async voidChange(id: string) { return request(`/operations/changes/${id}/void`, { method: 'POST' }) },
@@ -230,6 +259,7 @@ export const api = {
   collections: {
     async list() { return unwrap<PortfolioCollection[]>(await request('/collections'), ['collections']) },
     async create(data: Partial<PortfolioCollection>) { return unwrap<PortfolioCollection>(await request('/collections', { method: 'POST', body: data }), ['collection']) },
+    async update(id: string, data: Partial<PortfolioCollection>) { return unwrap<PortfolioCollection>(await request(`/collections/${id}`, { method: 'PUT', body: data }), ['collection']) },
     remove: (id: string) => request(`/collections/${id}`, { method: 'DELETE' }),
     async public(token: string) { return request<{ collection: PortfolioCollection; projects: PortfolioProject[] }>(`/public/collections/${encodeURIComponent(token)}`) },
   },

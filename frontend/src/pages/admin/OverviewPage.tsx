@@ -26,7 +26,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, EmptyState, ErrorState, LoadingState, PageHeader, StatusPill } from '../../components/ui'
+import { Button, EmptyState, ErrorState, LoadingState, Modal, PageHeader, StatusPill } from '../../components/ui'
+import { SharePanel } from '../../components/SharePanel'
+import { TermsOverview } from '../../components/TermsOverview'
+import { invoiceMessage, renewalMessage } from '../../lib/messages'
 import { ContactActions } from '../../components/ContactActions'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDate, formatRelative, getClientName, titleCase } from '../../lib/format'
@@ -50,6 +53,8 @@ export function OverviewPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [renewal, setRenewal] = useState<NonNullable<DashboardData['upcoming_renewals']>[number] | null>(null)
+  const [lateChargeAccepted, setLateChargeAccepted] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,7 +104,7 @@ export function OverviewPage() {
 
         <div className="overview-grid">
           <section className="panel panel--chart">
-            <header className="panel__header"><div><p className="eyebrow">Income analytics</p><h2>Revenue movement</h2></div><span className="panel-chip"><TrendingUp size={15} /> Live overview</span></header>
+            <header className="panel__header"><div><p className="eyebrow">Income analytics</p><h2>Revenue movement</h2></div><Link className="text-link" to="/admin/income">Detailed income summary <ArrowRight size={15} /></Link></header>
             {chartData.length ? <div className="revenue-chart" aria-label="Revenue chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 12, right: 10, left: -18, bottom: 0 }}><defs><linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5263ff" stopOpacity={0.32} /><stop offset="100%" stopColor="#5263ff" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="#edf0fa" strokeDasharray="3 5" /><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#858ca8', fontSize: 11 }} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#858ca8', fontSize: 11 }} tickFormatter={(value) => value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)} /><Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={{ borderRadius: 14, border: '1px solid #e7eafa', boxShadow: '0 14px 40px rgba(18,38,29,.12)' }} /><Area type="monotone" dataKey="value" stroke="#2233ff" strokeWidth={2.6} fill="url(#revenueFill)" /></AreaChart></ResponsiveContainer></div> : <EmptyState icon={TrendingUp} title="No revenue history yet" description="Paid invoice activity will appear here as data becomes available." />}
           </section>
 
@@ -122,7 +127,7 @@ export function OverviewPage() {
               const paid = Number(invoice.paid_amount || 0)
               const balance = Math.max(0, Number(invoice.amount || 0) - paid)
               const phone = phoneForInvoice(invoice)
-              return <article key={invoice.id} className="watch-row"><span className="watch-row__icon"><CalendarClock size={19} /></span><div className="watch-row__main"><strong>{getClientName(invoice.client, invoice.client_name)}</strong><small>{invoice.reference || `Invoice #${invoice.id}`} · Due {formatDate(invoice.due_date)}</small><progress max={Math.max(invoice.amount, 1)} value={paid} /></div><div className="watch-row__value"><strong>{formatCurrency(balance, invoice.currency || 'LKR')}</strong><StatusPill status={invoice.status} /></div>{phone && <button className="icon-button icon-button--whatsapp" type="button" aria-label="Send WhatsApp invoice reminder" onClick={() => openWhatsApp(phone, `Hello ${getClientName(invoice.client, invoice.client_name)}, this is a friendly reminder from Hich Studio regarding ${invoice.reference || 'your invoice'}. The current balance is ${formatCurrency(balance, invoice.currency || 'LKR')}.${invoice.share_url ? `\n\nView invoice: ${invoice.share_url}` : ''}`)}><MessageCircle size={18} /></button>}</article>
+              return <article key={invoice.id} className="watch-row"><span className="watch-row__icon"><CalendarClock size={19} /></span><div className="watch-row__main"><strong>{getClientName(invoice.client, invoice.client_name)}</strong><small>{invoice.reference || `Invoice #${invoice.id}`} · Due {formatDate(invoice.due_date)}</small><progress max={Math.max(invoice.amount, 1)} value={paid} /></div><div className="watch-row__value"><strong>{formatCurrency(balance, invoice.currency || 'LKR')}</strong><StatusPill status={invoice.status} /></div>{phone && <button className="icon-button icon-button--whatsapp" type="button" aria-label="Send WhatsApp invoice reminder" onClick={() => openWhatsApp(phone, invoiceMessage(invoice).body)}><MessageCircle size={18} /></button>}</article>
             })}</div> : <EmptyState icon={CheckCircle2} title="No payments need attention" description="Upcoming and overdue invoices will be listed here." />}
           </section>
 
@@ -130,7 +135,7 @@ export function OverviewPage() {
             <header className="panel__header"><div><p className="eyebrow">Annual care</p><h2>Renewal reminders</h2></div><span className="panel-chip panel-chip--warm">{renewals.length} due</span></header>
             {renewals.length ? <div className="renewal-list">{renewals.slice(0, 5).map((renewal, index) => {
               const name = getClientName(renewal.client, renewal.client_name)
-              return <article key={renewal.id || `${name}-${index}`}><div className="renewal-list__date"><strong>{formatDate(renewal.due_date, { day: '2-digit' })}</strong><small>{formatDate(renewal.due_date, { month: 'short' })}</small></div><div><strong>{name}</strong><small>{formatCurrency(renewal.amount || 0, renewal.currency || 'LKR')} · {formatDate(renewal.due_date)}</small></div>{renewal.phone && <button className="icon-button icon-button--whatsapp" type="button" onClick={() => openWhatsApp(renewal.phone, `Hello ${name}, this is a friendly reminder that your annual Hich Studio renewal of ${formatCurrency(renewal.amount || 0, renewal.currency || 'LKR')} is due on ${formatDate(renewal.due_date)}.${renewal.share_url ? `\n\nView details: ${renewal.share_url}` : ''}`)} aria-label={`Send renewal reminder to ${name}`}><MessageCircle size={17} /></button>}</article>
+              return <article key={renewal.id || `${name}-${index}`}><div className="renewal-list__date"><strong>{formatDate(renewal.due_date, { day: '2-digit' })}</strong><small>{formatDate(renewal.due_date, { month: 'short' })}</small></div><div><strong>{name}</strong><small>{formatCurrency(renewal.amount || 0, renewal.currency || 'LKR')} · {formatDate(renewal.due_date)}</small></div><button className="icon-button icon-button--whatsapp" type="button" onClick={() => { setLateChargeAccepted(false); setRenewal(renewal) }} aria-label={`Send renewal reminder to ${name}`}><MessageCircle size={17} /></button></article>
             })}</div> : <EmptyState icon={CalendarClock} title="No renewals approaching" description="Renewals due soon will appear here automatically." />}
           </section>
         </div>
@@ -139,7 +144,9 @@ export function OverviewPage() {
           <header className="panel__header"><div><p className="eyebrow">Workspace activity</p><h2>Recent updates</h2></div><Link to="/admin/activity" className="text-link">Full activity <ArrowRight size={15} /></Link></header>
           {(data?.recent_activity || []).length ? <div className="activity-preview__list">{data!.recent_activity!.slice(0, 6).map((event) => <article key={event.id}><span><CheckCircle2 size={16} /></span><div><strong>{event.action}</strong><p>{event.details || event.target}</p></div><time>{formatRelative(event.created_at)}</time></article>)}</div> : <EmptyState title="Nothing recorded yet" description="Important client and document changes will create an audit trail here." />}
         </section>
+        <section className="panel account-panel"><TermsOverview /></section>
       </>}
+      <Modal open={Boolean(renewal)} onClose={() => setRenewal(null)} title="Renewal reminder" size="lg">{renewal && <><label className="renewal-charge-consent"><input type="checkbox" checked={lateChargeAccepted} onChange={e => setLateChargeAccepted(e.target.checked)} /> This client expressly accepted the 18% late-payment surcharge.</label><SharePanel title={renewalMessage(renewal, lateChargeAccepted).subject} phone={renewal.phone} email={renewal.email} message={renewalMessage(renewal, lateChargeAccepted).body} /></>}</Modal>
     </div>
   )
 }

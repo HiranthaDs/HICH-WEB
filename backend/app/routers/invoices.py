@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import hmac
 import re
 from typing import Any
@@ -11,11 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 
 from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
-from ..dependencies import Principal, current_admin
+from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..invoice_sharing import (
     InvoiceDocumentCreate,
     InvoiceDocumentUpdate,
     InvoiceShareRequest,
+    RenewalInvoiceRequest,
     invoice_token,
     invoice_token_hash,
     public_invoice_shape,
@@ -29,6 +30,7 @@ from ..models import (
 )
 from ..security import client_ip, enforce_rate_limit
 from ..supabase_client import SupabaseGateway, get_supabase
+from ..income import COLOMBO
 
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -66,6 +68,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
                 "is_paid": is_paid,
                 "isPaid": is_paid,
                 "paid_at": paid_at,
+                "paid_amount": str(paid_for_phase),
             }
         )
     paid = sum((Decimal(str(item.get("amount") or 0)) for item in payment_records), Decimal())
@@ -75,7 +78,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         effective_status = "paid" if total > 0 and paid >= total else "partial" if paid > 0 else "sent"
     try:
         due_date = date.fromisoformat(str(record.get("due_date"))[:10]) if record.get("due_date") else None
-        if due_date and due_date < datetime.now(timezone.utc).date() and effective_status not in {"paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
+        if due_date and due_date < datetime.now(COLOMBO).date() and effective_status not in {"paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
             effective_status = "overdue"
     except ValueError:
         pass
@@ -126,6 +129,8 @@ def _document_failure(exc: Exception, operation: str) -> HTTPException:
         return HTTPException(status_code=404, detail="Invoice not found")
     if "invoice_void" in message:
         return HTTPException(status_code=409, detail="Voided invoices cannot be changed or shared")
+    if "renewal_invoice_cycle_unique" in message:
+        return HTTPException(status_code=409, detail="A renewal invoice already exists for this cycle. Open it instead.")
     if "invoice_validation:" in message:
         reason = message.split("invoice_validation:", 1)[1].split("'", 1)[0].split('"', 1)[0].strip()
         return HTTPException(status_code=422, detail=reason[:200])
@@ -142,6 +147,8 @@ def create_invoice(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    if payload.status == "void":
+        require_deletion_pin(request, settings, principal)
     record = json_ready(
         payload,
         exclude={"milestones", "payments", "amount", "reference", "client_name", "phone", "paid_amount"},
@@ -164,6 +171,58 @@ def create_invoice(
         raise
     except Exception as exc:
         raise _document_failure(exc, "create the invoice") from exc
+
+
+def _renewal_document(source: dict[str, Any], payload: RenewalInvoiceRequest, today: date) -> InvoiceDocumentCreate:
+    if source.get("invoice_kind") == "renewal" or source.get("status") == "void":
+        raise HTTPException(422, "Choose an active project invoice as the renewal source")
+    if str(source.get("renewal_due_date") or "")[:10] != payload.renewal_period_date.isoformat():
+        raise HTTPException(409, "The renewal date has changed. Reload the source invoice before billing.")
+    if payload.due_date < today:
+        raise HTTPException(422, "The new invoice payment due date cannot be before its issue date")
+    base = sum((item.amount for item in payload.items), Decimal())
+    late = Decimal(0)
+    if payload.apply_late_fee:
+        if payload.renewal_period_date >= today:
+            raise HTTPException(422, "The renewal is not overdue; no late-payment surcharge is due")
+        late = (base * Decimal("0.18")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total = base + late
+    if total >= Decimal("1000000000000"):
+        raise HTTPException(422, "The renewal invoice total exceeds the supported amount")
+    return InvoiceDocumentCreate(
+        client_id=source["client_id"], agreement_id=source.get("agreement_id"),
+        project_title=f"Domain & hosting renewal — {source.get('project_title') or 'Website'}"[:240],
+        amount=total, currency=payload.currency, issue_date=today, due_date=payload.due_date,
+        payment_method=source.get("payment_method"), payment_instructions=source.get("payment_instructions"),
+        customer_note=payload.customer_note, status="sent",
+        payments=[{"name": "Renewal payment", "amount": total}], invoice_kind="renewal",
+        renewal_source_invoice_id=source["id"], renewal_period_date=payload.renewal_period_date,
+        renewal_items=payload.items, renewal_late_fee=late, renewal_late_fee_accepted=payload.late_fee_accepted,
+    )
+
+
+@router.post("/{invoice_id}/renewal-invoice")
+def create_renewal_invoice(
+    invoice_id: UUID, payload: RenewalInvoiceRequest, request: Request,
+    principal: Principal = Depends(current_admin), settings: Settings = Depends(get_settings),
+    gateway: SupabaseGateway = Depends(get_supabase),
+) -> dict[str, Any]:
+    try:
+        document = _renewal_document(_get(invoice_id, gateway), payload, datetime.now(COLOMBO).date())
+        record = json_ready(document, exclude={"milestones", "payments", "amount", "reference", "client_name", "phone", "paid_amount"})
+        record.update({"invoice_number": _invoice_number().replace("INV-", "REN-", 1),
+                       "project_value": str(document.project_value), "created_by": str(principal.id)})
+        created = first(gateway.service.rpc("create_renewal_invoice", {
+            "p_source_id": str(invoice_id), "p_period_date": payload.renewal_period_date.isoformat(),
+            "p_fields": record, "p_actor_id": str(principal.id),
+        }).execute(), "Renewal invoice")
+        audit(gateway.service, request, settings, "prepare_renewal", "invoice", created["id"], principal,
+              {"source_invoice_id": str(invoice_id), "renewal_period_date": payload.renewal_period_date.isoformat()})
+        return {"invoice": _get(UUID(created["id"]), gateway)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _document_failure(exc, "prepare the renewal invoice") from exc
 
 
 @router.get("/{invoice_id}")
@@ -190,6 +249,18 @@ def update_invoice(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    needs_pin = payload.status == "void"
+    if payload.payments is not None:
+        current = _get(invoice_id, gateway)
+        by_id = {str(phase.id): phase for phase in payload.payments if phase.id}
+        for old in current.get("payments", []):
+            phase = by_id.get(str(old.get("id")))
+            if not phase or (old.get("is_paid") and (not (phase.is_paid or phase.isPaid) or Decimal(str(old["amount"])) != phase.amount)):
+                needs_pin = True
+    if payload.milestones is not None and _get(invoice_id, gateway).get("payments"):
+        needs_pin = True
+    if needs_pin:
+        require_deletion_pin(request, settings, principal)
     changes = json_ready(
         payload, exclude_unset=True,
         exclude={"amount", "reference", "payments", "milestones", "client_name", "phone", "paid_amount", "expected_revision"},
@@ -342,7 +413,14 @@ def update_payment(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    if payload.amount is not None:
+        current = first(gateway.service.table("payments").select("amount").eq("id", str(payment_id)).eq("invoice_id", str(invoice_id)).limit(1).execute(), "Payment")
+        if payload.amount < Decimal(str(current["amount"])):
+            require_deletion_pin(request, settings, principal)
     changes = json_ready(payload, exclude_unset=True)
+    for key in {"milestone_id", "method", "reference", "notes"} & payload.model_fields_set:
+        if getattr(payload, key) is None:
+            changes[key] = None
     try:
         updated = first(
             gateway.service.table("payments").update(changes).eq("id", str(payment_id)).eq("invoice_id", str(invoice_id)).execute(),

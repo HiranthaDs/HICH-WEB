@@ -7,6 +7,7 @@ import {
   Command,
   FileCheck2,
   FileText,
+  CircleDollarSign,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/admin/clients', label: 'Clients', icon: Users },
   { to: '/admin/agreements', label: 'Agreements', icon: FileCheck2 },
   { to: '/admin/invoices', label: 'Invoices', icon: FileText },
+  { to: '/admin/income', label: 'Income summary', icon: CircleDollarSign },
   { to: '/admin/portfolio', label: 'Portfolio', icon: BriefcaseBusiness },
   { to: '/admin/operations', label: 'Operations', icon: ClipboardList },
   { to: '/admin/activity', label: 'Activity', icon: Activity },
@@ -52,7 +54,7 @@ function WorkspaceSearch({ open, onClose }: { open: boolean; onClose: () => void
     void Promise.allSettled([api.clients.list(), api.agreements.list(), api.invoices.list(), api.portfolio.list()]).then(([clients, agreements, invoices, portfolio]) => {
       if (cancelled) return
       const results: SearchResult[] = []
-      if (clients.status === 'fulfilled') clients.value.items.forEach((client) => results.push({ id: `client-${client.id}`, title: client.name, detail: [client.company, client.phone, client.email].filter(Boolean).join(' · '), category: 'Client', destination: `/admin/clients?search=${encodeURIComponent(client.name)}`, icon: Users }))
+      if (clients.status === 'fulfilled') clients.value.items.forEach((client) => results.push({ id: `client-${client.id}`, title: client.name, detail: [client.company, client.phone, client.email].filter(Boolean).join(' · '), category: 'Client', destination: `/admin/clients?client=${encodeURIComponent(String(client.id))}`, icon: Users }))
       if (agreements.status === 'fulfilled') agreements.value.items.forEach((agreement) => results.push({ id: `agreement-${agreement.id}`, title: agreement.reference || agreement.title, detail: [agreement.project_title || agreement.title, getClientName(agreement.client, agreement.client_name), agreement.status].filter(Boolean).join(' · '), category: 'Agreement', destination: `/admin/agreements?search=${encodeURIComponent(agreement.reference || agreement.title)}`, icon: FileCheck2 }))
       if (invoices.status === 'fulfilled') invoices.value.items.forEach((invoice) => results.push({ id: `invoice-${invoice.id}`, title: invoice.reference || `Invoice ${invoice.id}`, detail: [getClientName(invoice.client, invoice.client_name), formatCurrency(invoice.amount, invoice.currency || 'LKR'), invoice.status].join(' · '), category: 'Invoice', destination: `/admin/invoices?search=${encodeURIComponent(invoice.reference || String(invoice.id))}`, icon: FileText }))
       if (portfolio.status === 'fulfilled') portfolio.value.items.forEach((project) => results.push({ id: `project-${project.id}`, title: project.title, detail: [project.category, project.published ? 'Published' : 'Draft'].filter(Boolean).join(' · '), category: 'Project', destination: `/admin/portfolio?search=${encodeURIComponent(project.title)}`, icon: BriefcaseBusiness }))

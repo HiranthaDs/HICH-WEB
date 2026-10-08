@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 
 from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
-from ..dependencies import Principal, current_admin
+from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..models import ClientCreate, ClientUpdate, json_ready
 from ..supabase_client import SupabaseGateway, get_supabase
 
@@ -155,6 +155,10 @@ def update_client(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     changes = json_ready(payload, exclude_unset=True)
+    if changes.get("status") == "archived":
+        current = first(gateway.service.table("clients").select("status").eq("id", str(client_id)).limit(1).execute(), "Client")
+        if current.get("status") != "archived":
+            require_deletion_pin(request, settings, principal)
     if not changes:
         return get_client(client_id, principal, gateway)
     try:

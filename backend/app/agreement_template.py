@@ -10,7 +10,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 
-TEMPLATE_ID = "hich-general-development-2026-10-v1"
+TEMPLATE_ID = "hich-general-development-2026-10-v2"
 CONSENT_TEXT = (
     "I agree to this agreement and its project schedule, confirm that I am authorised "
     "to act for the named client, and adopt my electronic signature as evidence of my agreement."
@@ -118,6 +118,13 @@ The signed version is preserved as a fixed record. Later changes to commercial t
 Neither party may transfer obligations in a way that materially prejudices the other without consent, except as allowed by an expressly agreed clause or applicable law. Nothing creates an employment relationship, partnership or agency beyond authority specifically granted. Clauses concerning accrued payments, confidentiality, intellectual property, lawful liability allocation and retained evidence survive termination to the extent necessary for their purpose."""),
 ]
 
+SECTIONS.extend([
+    ("32. Hich Web visiting fee and final-balance credit", "Where an on-site visit is requested, Hich Web quotes a visiting fee between LKR 5,000 and LKR 15,000 according to location, duration and required personnel. The exact accepted amount is recorded in the project-specific commercial schedule and must be paid before the visit is confirmed. The fee is non-refundable once the agreed visit is delivered or the Client cancels the reserved visit, subject to mandatory rights and reasonable treatment of an unperformed visit cancelled by Hich Web. The collected fee is credited once against the project's final balance; it is part of the project price and must not be billed or deducted twice. No credit is posted merely because a booking was created. For a foreign-currency project, the parties agree the conversion rate and credit in writing. Additional visits and travel costs require a separate accepted quotation."),
+    ("33. Transfer quotations at current rates", "Domain registrar, hosting, email, repository and project transfers are priced by Hich Web at the rates and exchange rate applicable when the transfer quotation is prepared. The quotation identifies vendor transfer or renewal charges, migration labour, backups, testing, licence restrictions, tax treatment, exclusions and its validity period. A fixed historic development budget does not freeze future transfer prices. The Client must approve the current quotation and fund agreed charges before transfer work starts. Hich Web does not impose undisclosed charges and does not guarantee vendor acceptance, immediate DNS propagation or continued availability of an expired domain. Lawful verification and payment for the relevant agreed work apply to handover, while Client ownership and mandatory rights remain protected."),
+    ("34. Renewal deadlines and disclosed late charges", "Domain, hosting and related renewal dates shown in the schedule are separate from development invoice deadlines. Renewal requires cleared payment and vendor confirmation before expiry; reminders assist the Client but do not extend vendor deadlines. Expired services may be suspended, enter redemption or become unavailable. Recovery, reinstatement and changed vendor prices are quoted separately. If a lawful 18% late-payment surcharge is expressly accepted in the project schedule, it is calculated once on the unpaid renewal base after the agreed due date, itemised separately and does not compound. It is not VAT and is not imposed retrospectively without agreement. VAT or another statutory tax is invoiced only where legally applicable, using the required registration and invoice details; tax does not arise solely because payment is late."),
+    ("35. Payment evidence and authorised changes", "Payments count only after cleared funds are recorded against the relevant invoice. The Client supplies the invoice reference and transfer receipt; a screenshot alone does not prove cleared payment. Mid-project and final payments reduce the same project balance. Hich Web provides corrected receipts when a posting error is substantiated, retains an audit trail and does not silently erase payment history. Work, production release and transfer of agreed deliverables may be conditional on corresponding undisputed payments. Extra work, third-party cost increases and changes to an accepted payment schedule require written approval. No clause excludes liability or mandatory remedies that cannot lawfully be excluded."),
+])
+
 GENERAL_AGREEMENT = "\n\n".join(f"{heading}\n\n{body}" for heading, body in SECTIONS)
 PROJECT_OVERVIEW = (
     "Development of the project identified above, as itemised in the accepted quotation and "
@@ -127,8 +134,9 @@ _DEFAULT_TERMS = {
     "Contracting entity": "Hich — full legal entity and business contact to be specified in the accepted project schedule.",
     "Scope and deliverables": "As itemised in the accepted quotation and project schedule; additional requirements require written approval of extra cost and timing.",
     "Payment schedule": "As expressly agreed in the accepted quotation and invoices before work begins.",
-    "Visit and travel fees": "Quoted separately and approved in writing before booking; no undisclosed visit charges.",
-    "Domain and hosting changes": "Impact and migration fees must be quoted and approved before work begins.",
+    "Renewal late-payment surcharge": "By signing this agreement, the Client accepts a single 18% late-payment surcharge on the unpaid domain/hosting renewal base if cleared payment is received after the renewal due date stated in the accepted schedule. The charge is itemised separately, is not compounded, does not duplicate a previously charged late fee, and excludes amounts already paid and separately invoiced tax. It is a contractual late-payment surcharge, not VAT, and applies only to the extent permitted by applicable law.",
+    "Visit and travel fees": "LKR 5,000–15,000 as accepted in the commercial schedule, collected before a visit, non-refundable subject to the visiting-fee clause and mandatory rights, and credited once to the final project balance.",
+    "Domain and hosting changes": "Hich Web determines the quotation using current vendor, hosting and project-transfer rates; written approval is required before work begins.",
     "Support and defect period": "Only the coverage and period expressly stated in the project schedule.",
     "Governing law and dispute forum": "To be expressly agreed in the project schedule; mandatory applicable law continues to apply.",
 }

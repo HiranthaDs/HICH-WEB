@@ -98,7 +98,20 @@ class AgreementStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class AgreementPaymentPhase(APIModel):
+    name: str = Field(min_length=1, max_length=240)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    is_paid: bool = False
+    paid_at: datetime | None = None
+    received_amount: Decimal = Field(default=0, ge=0, max_digits=14, decimal_places=2)
+
+
 class AgreementCreate(APIModel):
+    source_invoice_id: UUID | None = None
+    visiting_fee_lkr: Decimal = Field(default=0, ge=0, le=15000, decimal_places=2)
+    payment_schedule: list[AgreementPaymentPhase] = Field(default_factory=list, max_length=100)
+    payment_instructions: str | None = Field(default=None, max_length=5000)
+    project_due_date: date | None = None
     renewal_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     renewal_currency: str = Field(default="LKR", pattern=r"^(USD|LKR|GBP)$")
     renewal_due_date: date | None = None
@@ -145,6 +158,11 @@ class AgreementCreate(APIModel):
 
 
 class AgreementUpdate(APIModel):
+    source_invoice_id: UUID | None = None
+    visiting_fee_lkr: Decimal | None = Field(default=None, ge=0, le=15000, decimal_places=2)
+    payment_schedule: list[AgreementPaymentPhase] | None = Field(default=None, max_length=100)
+    payment_instructions: str | None = Field(default=None, max_length=5000)
+    project_due_date: date | None = None
     renewal_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     renewal_currency: str | None = Field(default=None, pattern=r"^(USD|LKR|GBP)$")
     renewal_due_date: date | None = None

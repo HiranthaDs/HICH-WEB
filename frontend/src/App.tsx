@@ -16,6 +16,7 @@ const OverviewPage = lazy(() => import('./pages/admin/OverviewPage').then((modul
 const ClientsPage = lazy(() => import('./pages/admin/ClientsPage').then((module) => ({ default: module.ClientsPage })))
 const AgreementsPage = lazy(() => import('./pages/admin/AgreementsPage').then((module) => ({ default: module.AgreementsPage })))
 const InvoicesPage = lazy(() => import('./pages/admin/InvoicesPage').then((module) => ({ default: module.InvoicesPage })))
+const IncomePage = lazy(() => import('./pages/admin/IncomePage').then(module => ({ default: module.IncomePage })))
 const PortfolioPage = lazy(() => import('./pages/admin/PortfolioPage').then((module) => ({ default: module.PortfolioPage })))
 const ActivityPage = lazy(() => import('./pages/admin/ActivitySettings').then((module) => ({ default: module.ActivityPage })))
 const SettingsPage = lazy(() => import('./pages/admin/ActivitySettings').then((module) => ({ default: module.SettingsPage })))
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="clients" element={<ClientsPage />} />
             <Route path="agreements" element={<AgreementsPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
+            <Route path="income" element={<IncomePage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="activity" element={<ActivityPage />} />
             <Route path="settings" element={<SettingsPage />} />
