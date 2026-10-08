@@ -202,6 +202,8 @@ def update_invoice(
             phase = by_id.get(str(old.get("id")))
             if not phase or (old.get("is_paid") and (not (phase.is_paid or phase.isPaid) or Decimal(str(old["amount"])) != phase.amount)):
                 needs_pin = True
+    if payload.milestones is not None and _get(invoice_id, gateway).get("payments"):
+        needs_pin = True
     if needs_pin:
         require_deletion_pin(request, settings, principal)
     changes = json_ready(

@@ -134,6 +134,7 @@ _DEFAULT_TERMS = {
     "Contracting entity": "Hich — full legal entity and business contact to be specified in the accepted project schedule.",
     "Scope and deliverables": "As itemised in the accepted quotation and project schedule; additional requirements require written approval of extra cost and timing.",
     "Payment schedule": "As expressly agreed in the accepted quotation and invoices before work begins.",
+    "Renewal late-payment surcharge": "By signing this agreement, the Client accepts a single 18% late-payment surcharge on the unpaid domain/hosting renewal base if cleared payment is received after the renewal due date stated in the accepted schedule. The charge is itemised separately, is not compounded, does not duplicate a previously charged late fee, and excludes amounts already paid and separately invoiced tax. It is a contractual late-payment surcharge, not VAT, and applies only to the extent permitted by applicable law.",
     "Visit and travel fees": "LKR 5,000–15,000 as accepted in the commercial schedule, collected before a visit, non-refundable subject to the visiting-fee clause and mandatory rights, and credited once to the final project balance.",
     "Domain and hosting changes": "Hich Web determines the quotation using current vendor, hosting and project-transfer rates; written approval is required before work begins.",
     "Support and defect period": "Only the coverage and period expressly stated in the project schedule.",

@@ -271,9 +271,18 @@ def create_user(payload: CreateUserRequest, request: Request, principal: Princip
     enforce_rate_limit(f"invite-user:{principal.id}", 10, 900)
     email = normalize_email(str(payload.email))
     try:
-        existing = rows(gateway.service.table("profiles").select("id").eq("email", email).limit(1).execute())
-        if existing:
+        existing = rows(gateway.service.table("profiles").select("id,portal_access,role,active").eq("email", email).limit(1).execute())
+        if existing and (existing[0].get("portal_access") or is_allowed_admin(email, settings.admin_email_set)):
             raise HTTPException(409, "This user already exists. Edit their access instead.")
+        if existing:
+            saved = first(gateway.service.table("profiles").update({"full_name": payload.full_name, "role": payload.role, "active": True, "portal_access": True}).eq("id", existing[0]["id"]).execute(), "User")
+            message = "Existing account granted portal access. Password reset email requested."
+            try:
+                gateway.auth_client().auth.reset_password_for_email(email, {"redirect_to": f"{str(settings.public_app_url).rstrip('/')}/admin/reset-password"})
+            except Exception:
+                message = "Portal access granted. Reset email could not be requested; use Send password reset to retry."
+            audit(gateway.service, request, settings, "user_access_granted", "user", saved["id"], principal, {"role": payload.role})
+            return {"user": saved, "message": message}
         invited = gateway.service.auth.admin.invite_user_by_email(email, options={
             "redirect_to": f"{str(settings.public_app_url).rstrip('/')}/admin/reset-password",
             "data": {"full_name": payload.full_name},

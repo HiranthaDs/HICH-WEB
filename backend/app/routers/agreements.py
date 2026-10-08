@@ -365,12 +365,14 @@ def update_agreement(
     changes = json_ready(payload, exclude_unset=True, exclude={"content", "expected_version"})
     if "expires_at" in payload.model_fields_set:
         changes["expires_at"] = payload.expires_at.isoformat() if payload.expires_at else None
-    for key in ("renewal_amount", "renewal_due_date"):
+    for key in ("renewal_amount", "renewal_due_date", "source_invoice_id", "payment_instructions", "project_due_date"):
         if key in payload.model_fields_set and getattr(payload, key) is None:
             changes[key] = None
     if payload.content is not None and payload.description is None:
         changes["description"] = payload.content
     try:
+        if "client_id" in changes and str(changes["client_id"]) != str(current["client_id"]) and "source_invoice_id" not in changes:
+            changes["source_invoice_id"] = None
         if changes.get("source_invoice_id"):
             source = first(gateway.service.table("invoices").select("client_id,status").eq("id", changes["source_invoice_id"]).limit(1).execute(), "Invoice")
             if source["client_id"] != str(changes.get("client_id", current["client_id"])) or source["status"] == "void":

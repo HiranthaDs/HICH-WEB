@@ -17,6 +17,7 @@ from app.commercial_terms import scheduled_terms
 from app.income import income_report
 from app.routers import auth, agreements, communications, invoices
 from app.security import rate_limiter
+from app.agreement_template import default_terms
 
 
 def settings(**extra):
@@ -45,6 +46,12 @@ def test_render_environment_origin_is_allowed_without_trusting_host_headers():
     assert client.post("/login", headers={"Origin": "https://hich-web.onrender.com"}).status_code == 200
     assert client.post("/login", headers={"Origin": "https://evil.example", "Host": "evil.example", "X-Forwarded-Host": "evil.example"}).status_code == 403
     assert client.post("/login", headers={"Referer": "https://evil.example/login"}).status_code == 403
+
+
+def test_public_login_path_is_normalized_and_render_replaces_production_localhost_links():
+    assert str(settings(public_app_url="https://hich-web.onrender.com/admin/login").public_app_url).rstrip("/") == "https://hich-web.onrender.com"
+    cfg = settings(environment="production", public_app_url="http://localhost:5173", render_external_url="https://hich-web.onrender.com")
+    assert str(cfg.public_app_url).rstrip("/") == "https://hich-web.onrender.com"
 
 
 @pytest.mark.parametrize("profile, permitted", [
@@ -96,6 +103,38 @@ def test_staff_cannot_manage_users_and_admin_cannot_remove_own_access():
     assert exc.value.status_code == 409
 
 
+def test_existing_auth_signup_can_be_granted_portal_access_without_duplicate_invitation():
+    account = {"id": str(uuid4()), "email": "existing@example.com", "full_name": "Existing User", "role": "staff", "active": True, "portal_access": False}
+    recovery = []
+    class Query(ProfileQuery):
+        def update(self, changes): account.update(changes); return self
+        def execute(self): return SimpleNamespace(data=[account.copy()])
+    g = SimpleNamespace(service=SimpleNamespace(table=lambda _: Query(account)), auth_client=lambda: SimpleNamespace(auth=SimpleNamespace(reset_password_for_email=lambda email, options: recovery.append((email, options)))))
+    rate_limiter.clear()
+    result = auth.create_user(auth.CreateUserRequest(email=account["email"], full_name="Approved Staff", role="staff"), Request({"type": "http", "headers": []}), Principal(uuid4(), "owner@example.com"), settings(), g)
+    assert result["user"]["portal_access"] is True
+    assert result["user"]["role"] == "staff"
+    assert recovery[0][0] == account["email"]
+    with pytest.raises(HTTPException) as exc:
+        auth.create_user(auth.CreateUserRequest(email=account["email"], full_name="Approved Staff", role="staff"), Request({"type": "http", "headers": []}), Principal(uuid4(), "owner@example.com"), settings(), g)
+    assert exc.value.status_code == 409
+
+
+def test_reassigning_agreement_clears_old_invoice_association(monkeypatch):
+    client_id, new_client_id, agreement_id = uuid4(), uuid4(), uuid4()
+    record = {"id": str(agreement_id), "public_id": str(uuid4()), "client_id": str(client_id), "source_invoice_id": str(uuid4()), "title": "Development", "project_title": "Website", "amount": "20000", "currency": "LKR", "status": "draft", "version": 1, "terms": {"Scope": "Website"}}
+    class Query(ProfileQuery):
+        def __init__(self, table): self.table = table
+        def update(self, changes): record.update(changes); return self
+        def neq(self, *_): return self
+        def execute(self): return SimpleNamespace(data=[{"name": "New Client", "phone": "+94771111111", "email": "new@example.com"}] if self.table == "clients" else [record.copy()])
+    g = SimpleNamespace(service=SimpleNamespace(table=lambda table: Query(table)))
+    monkeypatch.setattr(agreements, "_agreement_by_id", lambda *_: record.copy())
+    result = agreements.update_agreement(agreement_id, agreements.AgreementUpdate(client_id=new_client_id), Request({"type": "http", "headers": []}), Principal(uuid4(), "owner@example.com"), settings(), g)
+    assert result["agreement"]["source_invoice_id"] is None
+    assert result["agreement"]["client_id"] == str(new_client_id)
+
+
 def test_password_change_verifies_current_password_and_revokes_refresh_sessions():
     cfg = settings(); principal = Principal(uuid4(), "owner@example.com")
     calls = []
@@ -129,6 +168,13 @@ def test_visiting_fee_is_included_once_and_commercial_changes_affect_document_di
     assert agreements._document_digest(record) == agreements._document_digest(record | {"amount": 40000.0, "visiting_fee_lkr": 5000.0})
     cleared = scheduled_terms(record | {"visiting_fee_lkr": 0, "payment_schedule": [], "terms": terms})
     assert "Project-specific commercial schedule" not in cleared
+
+
+def test_new_agreements_explicitly_disclose_agreed_renewal_surcharge_before_signing():
+    terms = default_terms()
+    assert "Client accepts a single 18%" in terms["Renewal late-payment surcharge"]
+    assert "not VAT" in terms["Renewal late-payment surcharge"]
+    assert "amounts already paid" in terms["Renewal late-payment surcharge"]
 
 
 @pytest.mark.parametrize("patch", [{"visiting_fee_lkr": 4999}, {"visiting_fee_lkr": 15001}, {"amount": 4000, "visiting_fee_lkr": 5000}, {"payment_schedule": [{"name": "Final", "amount": 7000}]}])
