@@ -8,6 +8,18 @@
 - Receipt edits and removals recalculate balances. The PIN is required before a receipt is reduced or deleted, a stored phase is removed, an invoice is voided or a client is archived. Paid phases cannot be removed until their receipts are corrected. Invoice revisions retain previous financial records.
 - Saving an invoice or receipt prepares a client message showing reference, total, received payments, milestone breakdown, balance, due date and payment instructions.
 
+## More instalments and separate renewal invoices
+
+Invoices support up to 100 named payment phases. **Add phase** and repeated **Add mid payment** use any unallocated amount first, then split the unreceived portion of the final or last pending phase. They never increase the invoice total or reduce a phase below its existing receipts. Edit names and amounts for the agreed schedule; record actual partial receipts through **Add payment**.
+
+On the project invoice, choose **Renewal invoice** (also available inside its renewal reminder). The renewal date on the project identifies the billing cycle. Enter separate domain and hosting charges, or one combined charge, and confirm the billing currency and payment due date. **Create & share invoice** prepares an unpaid standalone renewal bill. **Create & record payment** opens the receipt form immediately. If an invoice already exists for that source/renewal cycle, it is reused, including after payment; a voided bill may be replaced.
+
+An overdue cycle can include one explicitly accepted 18% late-payment surcharge, itemised separately from service charges. It is validated on the server and saved in the invoice and revision history. The renewal invoice has its own `REN-` reference, service breakdown, receipt ledger, balance, private sharing link and print/PDF view. Project receipts and the development total are never copied into it. Saving a renewal receipt prepares a renewal-only message; after full payment it prepares the **paid renewal invoice** for WhatsApp or professional email. Email delivery still uses the SMTP settings below.
+
+Paid renewal cycles stop appearing as unpaid renewal reminders on the dashboard. Payment does not automatically extend a registrar/hosting expiry date: after provider confirmation, update the next service expiry on the source project invoice. This preserves the paid cycle and allows a new invoice for the next cycle.
+
+Migration `20261008180000_renewal_invoices.sql` adds this workflow. `supabase/tests/renewal_invoices.sql` exercises multiple phases, partial receipts, invoice reuse, financial validation, payment isolation and revision history entirely inside a rolled-back transaction. `npm run test:ui:renewals` checks the browser flow with synthetic intercepted requests, including 320/390 px layouts.
+
 ## Agreements
 
 Choose **Create agreement** on an invoice or select **Copy from invoice** in the agreement editor. The latest saved invoice supplies the client, project, currency, budget, payment schedule, instructions and renewal details. Client records are searchable. Agreements display newest first.
@@ -40,6 +52,6 @@ The new income page filters receipt dates in Asia/Colombo and keeps each currenc
 
 Apply migrations in filename order before publishing the code. `20261008140000_agreement_gbp_renewals.sql` and `20261008160000_portal_workflows.sql` were applied to the existing linked project for this update. The new migration preserves business records and adds access flags, agreement commercial fields, version tracking and payment safeguards.
 
-Render's trusted `RENDER_EXTERNAL_URL` is included in allowed browser origins. Public URLs are normalized to an origin, and a production localhost public URL falls back to Render's address. `render.yaml` uses `https://hich-web.onrender.com` for public links and allowed frontend origins. Login requests from arbitrary origins remain blocked. `/api/health` reports application version `1.1.0` so deployment can be verified.
+Render's trusted `RENDER_EXTERNAL_URL` is included in allowed browser origins. Public URLs are normalized to an origin, and a production localhost public URL falls back to Render's address. `render.yaml` uses `https://hich-web.onrender.com` for public links and allowed frontend origins. Login requests from arbitrary origins remain blocked. `/api/health` reports application version `1.2.0` so deployment can be verified.
 
 Validation: `npm run build`, `python -m pytest backend/tests -q`, and `npm run test:ui:portal` against the local Vite server on port 5174. Browser fixtures exercise allocation, partial receipts, agreement copying, invitations, PIN rejection, email preview and layouts at 320/390 px. Screenshots and results are in `docs/ui-review/portal-updates`.

@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Ten phases save without increasing the agreed total or changing partial receipts; cent rounding and fully-paid rejection",
+    "Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message",
+    "Opening the same renewal cycle reuses its paid invoice",
+    "Client invoice contains only renewal services, surcharge and actual receipts; form and public invoice fit 320/390 px"
+  ],
+  "errors": [],
+  "interceptedWrites": 8
+}

@@ -83,7 +83,15 @@ export interface Agreement {
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'void' | string
 
+export type RenewalItem = { service: 'domain' | 'hosting' | 'domain_hosting'; description: string; amount: number }
+
 export interface Invoice {
+  invoice_kind?: 'project' | 'renewal'
+  renewal_source_invoice_id?: Id
+  renewal_period_date?: string
+  renewal_items?: RenewalItem[]
+  renewal_late_fee?: number
+  renewal_late_fee_accepted?: boolean
   agreement_id?: Id
   client_email?: string
   id: Id

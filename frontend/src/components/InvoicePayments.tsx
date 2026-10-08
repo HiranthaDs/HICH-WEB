@@ -17,7 +17,7 @@ export function InvoicePayments({ invoice, onClose, onSaved }: { invoice: Invoic
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' })
   useEffect(() => {
     if (!invoice) return
-    setReceiptId(''); setPhaseId(''); setAmount(Math.max(0, Number(invoice.amount) - Number(invoice.paid_amount || 0)))
+    setReceiptId(''); setPhaseId(invoice.payments?.length === 1 ? String(invoice.payments[0].id || '') : ''); setAmount(Math.max(0, Number(invoice.amount) - Number(invoice.paid_amount || 0)))
     setMethod(invoice.payment_method || 'Bank transfer'); setReference(''); setPaidDate(today)
   }, [invoice, today])
   const save = async (event: FormEvent) => {

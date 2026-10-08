@@ -9,6 +9,21 @@ const money = (amount: unknown, currency?: string) => formatCurrency(Number(amou
 export function invoiceMessage(invoice: Invoice): ClientMessage {
   const paid = Number(invoice.paid_amount || 0), total = Number(invoice.amount || 0)
   const balance = Math.max(0, total - paid)
+  if (invoice.invoice_kind === 'renewal') {
+    const services = (invoice.renewal_items || []).map(item => `• ${item.description}: ${money(item.amount, invoice.currency)}`).join('\n')
+    const receipts = (invoice.payment_records || []).map(receipt => `• ${formatDate(receipt.paid_at)}: ${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`).join('\n')
+    return { subject: `Hich Web | ${invoice.reference || 'Renewal invoice'} | ${balance > 0 ? 'Domain & hosting renewal invoice' : 'Paid renewal invoice'}`, body: [
+      greeting(getClientName(invoice.client, invoice.client_name)),
+      balance > 0 ? 'Your domain / hosting renewal invoice is ready.' : 'Thank you. We have received your renewal payment. Your paid domain / hosting renewal invoice is available below for your records.',
+      `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nServices: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nRenewal cycle / service expiry: ${formatDate(invoice.renewal_period_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
+      services ? `SERVICE CHARGES\n${services}${Number(invoice.renewal_late_fee) > 0 ? `\n• Agreed late-payment surcharge (18%, once): ${money(invoice.renewal_late_fee, invoice.currency)}` : ''}` : '',
+      receipts ? `PAYMENT RECEIVED\n${receipts}` : '',
+      balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
+      invoice.share_url ? `VIEW ${balance > 0 ? 'RENEWAL' : 'PAID RENEWAL'} INVOICE\n${invoice.share_url}` : '',
+      balance > 0 ? 'Please use the renewal invoice reference when paying and send us your transfer receipt.' : 'This invoice confirms cleared payment. Service renewal is confirmed separately after the registrar or hosting provider completes it.',
+      invoice.customer_note || '', closing,
+    ].filter(Boolean).join('\n\n') }
+  }
   const phases = (invoice.payments || []).map(p => `• ${p.name}: ${money(p.amount, invoice.currency)} — ${p.is_paid ?? p.isPaid ? 'Received' : Number(p.paid_amount) > 0 ? `Part received (${money(p.paid_amount, invoice.currency)})` : 'Pending'}${p.paid_at ? ` (${formatDate(p.paid_at)})` : ''}`).join('\n')
   return { subject: `Hich Web | ${invoice.reference || 'Invoice'} | ${balance > 0 ? 'Payment update' : 'Payment complete'}`, body: [
     greeting(getClientName(invoice.client, invoice.client_name)),

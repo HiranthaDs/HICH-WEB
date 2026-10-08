@@ -55,7 +55,7 @@ def dashboard(
     try:
         clients = [item for item in all_records(gateway, "clients", "id,name,company,email,phone,status") if item["status"] != "archived"]
         agreements = all_records(gateway, "agreements", "id,source_invoice_id,client_id,title,project_title,status,sent_at,viewed_at,expires_at,updated_at,renewal_amount,renewal_currency,renewal_due_date,clients(name,company,email,phone)")
-        all_invoices = all_records(gateway, "invoices", "id,agreement_id,invoice_number,project_title,status,project_value,currency,due_date,renewal_amount,renewal_currency,renewal_due_date,client_id,clients(name,company,email,phone)")
+        all_invoices = all_records(gateway, "invoices", "id,agreement_id,invoice_kind,renewal_source_invoice_id,renewal_period_date,invoice_number,project_title,status,project_value,currency,due_date,renewal_amount,renewal_currency,renewal_due_date,client_id,clients(name,company,email,phone)")
         invoices = [item for item in all_invoices if item["status"] != "void"]
         payments = all_records(gateway, "payments", "id,invoice_id,amount,currency,paid_at")
         projects = rows(gateway.service.table("portfolio_projects").select("id,published").execute())
@@ -81,6 +81,9 @@ def dashboard(
 
         invoice_cards: list[dict[str, Any]] = []
         renewal_cards: list[dict[str, Any]] = []
+        settled_renewals = {(str(item.get("renewal_source_invoice_id")), str(item.get("renewal_period_date"))[:10])
+                           for item in invoices if item.get("invoice_kind") == "renewal" and item.get("status") != "draft"
+                           and paid_by_invoice[str(item["id"])] >= _money(item.get("project_value"))}
         for item in invoices:
             client = item.get("clients") or {}
             paid_amount = paid_by_invoice[str(item.get("id") or "")]
@@ -107,7 +110,7 @@ def dashboard(
                 renewal_due = datetime.fromisoformat(str(item.get("renewal_due_date"))) if item.get("renewal_due_date") else None
             except (TypeError, ValueError):
                 renewal_due = None
-            if item.get("renewal_amount") and renewal_due and (renewal_due.date() - current.date()).days <= 60:
+            if item.get("renewal_amount") and renewal_due and (renewal_due.date() - current.date()).days <= 60 and (str(item["id"]), renewal_due.date().isoformat()) not in settled_renewals:
                 renewal_cards.append(
                     {
                         "id": item.get("id"),

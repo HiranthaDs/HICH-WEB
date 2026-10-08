@@ -214,6 +214,7 @@ export const api = {
     pdf: (id: Agreement['id'], reference = 'agreement') => download(`/agreements/${id}/pdf`, `${reference}.pdf`),
   },
   invoices: {
+    async createRenewal(id: Invoice['id'], data: { renewal_period_date: string; items: NonNullable<Invoice['renewal_items']>; currency: string; due_date: string; apply_late_fee: boolean; late_fee_accepted: boolean; customer_note?: string }) { return unwrap<Invoice>(await request(`/invoices/${id}/renewal-invoice`, { method: 'POST', body: data }), ['invoice']) },
     async get(id: Invoice['id']) { return unwrap<Invoice>(await request(`/invoices/${id}`), ['invoice']) },
     async recordPayment(id: Invoice['id'], data: { milestone_id?: string | null; amount: number; currency: string; method?: string; reference?: string; paid_at: string }) { return unwrap<Invoice>(await request(`/invoices/${id}/payments`, { method: 'POST', body: data }), ['invoice']) },
     async updatePayment(id: Invoice['id'], paymentId: string, data: { milestone_id?: string | null; amount: number; currency: string; method?: string; reference?: string; paid_at: string }, pin?: string) { return unwrap<Invoice>(await request(`/invoices/${id}/payments/${paymentId}`, { method: 'PUT', body: data, headers: pin ? { 'X-Deletion-PIN': pin } : undefined }), ['invoice']) },

@@ -1742,3 +1742,8 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .toast__close { width: 36px; height: 36px; }
   .public-invoice .document-summary { grid-template-columns: minmax(0, 1fr); }
 }
+/* Service charges remain readable when preparing a separate renewal bill. */
+.renewal-service-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(110px, 1fr) auto; gap: 12px; align-items: end; margin: 16px 0; }
+.renewal-service-row .icon-button { margin-bottom: 3px; }
+.renewal-fee-options { margin: 20px 0; }
+@media (max-width: 640px) { .renewal-service-row { grid-template-columns: minmax(0, 1fr) auto; } .renewal-service-row > .field { grid-column: 1 / -1; } .renewal-service-row > .field:nth-child(3) { grid-column: 1; } }
