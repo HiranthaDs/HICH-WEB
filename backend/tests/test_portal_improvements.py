@@ -103,6 +103,47 @@ def test_staff_cannot_manage_users_and_admin_cannot_remove_own_access():
     assert exc.value.status_code == 409
 
 
+def test_valid_deletions_do_not_consume_failed_pin_limit():
+    from app.dependencies import require_deletion_pin
+    rate_limiter.clear()
+    principal = Principal(uuid4(), "owner@example.com")
+    good = Request({"type": "http", "headers": [(b"x-deletion-pin", b"2113")]})
+    bad = Request({"type": "http", "headers": [(b"x-deletion-pin", b"0000")]})
+    for _ in range(20):
+        require_deletion_pin(good, settings(), principal)
+    for _ in range(8):
+        with pytest.raises(HTTPException) as exc:
+            require_deletion_pin(bad, settings(), principal)
+        assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        require_deletion_pin(bad, settings(), principal)
+    assert exc.value.status_code == 429
+    require_deletion_pin(good, settings(), principal)
+
+
+def test_temporary_password_creates_confirmed_user_without_leaking_secret(monkeypatch):
+    account, created, audits = {}, [], []
+    class Query(ProfileQuery):
+        def upsert(self, changes): account.update(changes); return self
+        def execute(self): return SimpleNamespace(data=[account.copy()] if account else [])
+    def create(data):
+        created.append(data)
+        return SimpleNamespace(user=SimpleNamespace(id=uuid4()))
+    gateway = SimpleNamespace(service=SimpleNamespace(table=lambda _: Query(), auth=SimpleNamespace(admin=SimpleNamespace(create_user=create))))
+    monkeypatch.setattr(auth, "audit", lambda *args: audits.append(args))
+    rate_limiter.clear()
+    secret = "Temporary-pass-1234"
+    payload = auth.CreateUserRequest(email="staff@example.com", full_name="New Staff", temporary_password=secret)
+    result = auth.create_user(payload, Request({"type": "http", "headers": []}), Principal(uuid4(), "owner@example.com"), settings(), gateway)
+    assert created[0]["password"] == secret and created[0]["email_confirm"] is True
+    assert result["user"]["portal_access"] is True
+    assert secret not in str(result) and secret not in str(audits) and secret not in repr(payload)
+    account["portal_access"] = False
+    with pytest.raises(HTTPException) as exc:
+        auth.create_user(payload, Request({"type": "http", "headers": []}), Principal(uuid4(), "owner@example.com"), settings(), gateway)
+    assert exc.value.status_code == 409 and len(created) == 1
+
+
 def test_existing_auth_signup_can_be_granted_portal_access_without_duplicate_invitation():
     account = {"id": str(uuid4()), "email": "existing@example.com", "full_name": "Existing User", "role": "staff", "active": True, "portal_access": False}
     recovery = []

@@ -29,7 +29,7 @@ fs.mkdirSync(output, { recursive: true });
       if (endpoint === '/auth/me') payload = { user: { id: 'owner', email: 'owner@example.test', name: 'Owner', role: 'admin' } };
       else if (endpoint === '/clients') payload = [client];
       else if (endpoint.endsWith('/profile')) payload = { profile: { client, invoices: [invoice], agreements } };
-      else if (endpoint === '/invoices') payload = [invoice];
+      else if (endpoint === '/invoices') payload = invoice.deleted_at ? [] : [invoice];
       else if (endpoint === '/invoices/invoice-1' && method === 'PUT') {
         invoice = { ...invoice, ...data, revision: invoice.revision + 1, payments: data.payments.map((p, i) => ({ ...p, id: p.id || `phase-${i}`, paid_amount: p.is_paid ? p.amount : p.paid_amount || 0 })) };
         invoice.paid_amount = invoice.payments.reduce((sum, p) => sum + Number(p.paid_amount), 0);
@@ -37,7 +37,7 @@ fs.mkdirSync(output, { recursive: true });
       }
       else if (endpoint === '/invoices/invoice-1' && method === 'DELETE') {
         if (request.headers()['x-deletion-pin'] !== '2113') { status = 403; payload = { detail: 'Enter the correct deletion PIN.' }; }
-        else { invoice.status = 'void'; status = 204; }
+        else { invoice.status = 'void'; invoice.deleted_at = new Date().toISOString(); status = 204; }
       }
       else if (endpoint === '/invoices/invoice-1') payload = { invoice };
       else if (endpoint.endsWith('/share') && endpoint.startsWith('/invoices/')) payload = { invoice, share_url: base + '/invoice/test' };
@@ -51,11 +51,15 @@ fs.mkdirSync(output, { recursive: true });
       else if (endpoint === '/agreements/template') payload = { template };
       else if (endpoint.startsWith('/agreements/from-invoice/')) payload = { agreement: { ...template, client_id: client.id, client_name: client.name, client_phone: client.phone, client_email: client.email, source_invoice_id: invoice.id, project_title: invoice.project_title, amount: invoice.amount, currency: invoice.currency, renewal_amount: invoice.renewal_amount, renewal_currency: invoice.renewal_currency, renewal_due_date: invoice.renewal_due_date, visiting_fee_lkr: 5000, payment_instructions: invoice.payment_instructions, payment_schedule: invoice.payments.map(p => ({ name: p.name, amount: p.amount, received_amount: p.paid_amount, is_paid: p.is_paid })) } };
       else if (endpoint === '/agreements' && method === 'POST') { const agreement = { ...data, id: 'new-agreement', reference: 'AGR-NEW', created_at: '2026-10-08T10:00:00Z', status: 'draft' }; agreements.unshift(agreement); payload = { agreement }; }
+      else if (endpoint.startsWith('/agreements/') && method === 'DELETE') {
+        if (request.headers()['x-deletion-pin'] !== '2113') { status = 403; payload = { detail: 'Enter the correct deletion PIN.' }; }
+        else { const index = agreements.findIndex(a => a.id === endpoint.split('/').at(-1)); agreements.splice(index, 1); status = 204; }
+      }
       else if (endpoint === '/agreements') payload = agreements;
       else if (endpoint.endsWith('/share') && endpoint.startsWith('/agreements/')) payload = { share: { share_url: base + '/sign/test' } };
       else if (endpoint === '/communications/email-status') payload = { available: false };
       else if (endpoint === '/income') payload = { income };
-      else if (endpoint === '/auth/users' && method === 'POST') { users.push({ ...data, id: 'staff', active: true }); payload = { user: users.at(-1), message: 'Invitation sent.' }; }
+      else if (endpoint === '/auth/users' && method === 'POST') { const { temporary_password, ...profile } = data; users.push({ ...profile, id: `staff-${users.length}`, active: true }); payload = { user: users.at(-1), message: temporary_password ? 'User created.' : 'Invitation sent.' }; }
       else if (endpoint === '/auth/users') payload = { users };
       request.respond({ status, contentType: 'application/json', body: status === 204 ? undefined : JSON.stringify(payload) });
     });
@@ -99,12 +103,23 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(created.data.source_invoice_id, invoice.id); assert.equal(created.data.payment_schedule.length, 4); assert.equal(created.data.renewal_amount, 12000);
     await go('/admin/agreements'); assert.equal(await page.$eval('.agreement-card .agreement-card__copy > span', e => e.textContent), 'AGR-NEW'); checks.push('Invoice copies contact, budget, payments, renewal and fee into agreement; newest agreement first');
 
-    await go('/admin/settings'); await click('Invite user'); await fill('Full name', 'Operations User'); await fill('Email', 'operations@example.test'); await click('Send invitation', '.modal'); await page.waitForFunction(() => !document.querySelector('#user-access-form'));
+    await go('/admin/settings'); await click('Invite user'); await fill('Full name', 'Operations User'); await fill('Email', 'operations@example.test'); await page.select(await field('Account setup'), 'email'); await click('Send invitation', '.modal'); await page.waitForFunction(() => !document.querySelector('#user-access-form'));
     const invited = writes.find(w => w.endpoint === '/auth/users' && w.method === 'POST'); assert.equal(invited.data.role, 'staff'); assert.equal(invited.data.email, 'operations@example.test'); assert.equal(invited.data.password, undefined); checks.push('Staff invited by email with no admin-selected password');
 
+    await click('Invite user'); await fill('Full name', 'Temporary User'); await fill('Email', 'temporary@example.test'); await fill('Temporary password', 'Custom-temporary-123'); await click('Create user', '.modal');
+    await page.waitForFunction(() => [...document.querySelectorAll('.modal h2')].some(e => e.textContent === 'Portal user created'));
+    assert.equal(await page.$eval(await field('Created password'), e => e.value), 'Custom-temporary-123');
+    assert.equal(writes.find(w => w.data.email === 'temporary@example.test').data.temporary_password, 'Custom-temporary-123');
+    await click('Done', '.modal'); checks.push('Admin-selected temporary password is submitted and login credentials are shown once');
+
+    agreements[0].status = 'signed'; await go('/admin/agreements'); await click('Delete'); await fill('Deletion PIN', '2113'); await click('Delete agreement', '.modal');
+    await page.waitForFunction(() => !document.querySelector('.modal'));
+    await go('/admin/agreements'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('AGR-NEW')); checks.push('Visible agreement delete accepts PIN and stays removed after reload, including signed agreements');
+
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); for (const route of ['/admin/invoices', '/admin/agreements', '/admin/settings', '/admin/income', '/admin/clients?client=client-1']) { await go(route); await noOverflow(`${route} ${width}`); } }
-    await go('/admin/invoices'); await page.click('button[aria-label="Delete invoice"]'); await fill('Deletion PIN', '1234'); await click('Void invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
-    assert.equal(invoice.status, 'partial'); await fill('Deletion PIN', '2113'); await click('Void invoice', '.modal'); await page.waitForFunction(() => !document.querySelector('input[autocomplete="off"]')); assert.equal(invoice.status, 'void'); checks.push('Incorrect deletion PIN leaves data unchanged; correct PIN sent to backend');
+    await go('/admin/invoices'); await page.click('button[aria-label="Delete invoice"]'); await fill('Deletion PIN', '1234'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
+    assert.equal(invoice.status, 'partial'); await fill('Deletion PIN', '2113'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => !document.querySelector('input[autocomplete="off"]')); assert.equal(invoice.status, 'void');
+    await go('/admin/invoices'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('INV-TEST')); checks.push('Incorrect deletion PIN leaves data unchanged; correct PIN deletes and stays removed after reload');
     await go('/admin/income'); await page.screenshot({ path: path.join(output, 'income-mobile.png'), fullPage: true }); checks.push('Settings, agreement, invoice, client profile and income fit 320 / 390 px');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ checks, errors, interceptedWrites: writes.length }, null, 2)); console.log(JSON.stringify({ checks, errors }, null, 2));

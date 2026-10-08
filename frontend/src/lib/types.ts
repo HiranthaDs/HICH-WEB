@@ -131,7 +131,7 @@ export interface Invoice {
     paid_at?: string
     paid_amount?: number
   }>
-  payment_records?: Array<{ id: string; milestone_id?: string; amount: number; currency: string; paid_at: string; method?: string; reference?: string; notes?: string }>
+  payment_records?: Array<{ id: string; milestone_id?: string; amount: number; currency: string; paid_at: string; date_confirmed?: boolean; method?: string; reference?: string; notes?: string }>
 }
 
 export interface PortfolioProject {
@@ -214,6 +214,7 @@ export interface DashboardData {
 }
 
 export interface IncomeReport {
+  undated_receipts?: Array<{ invoice_id: Id; reference: string; client_name: string; amount: number; currency: string; method?: string }>
   start: string
   end: string
   as_of: string

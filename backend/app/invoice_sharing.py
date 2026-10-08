@@ -139,7 +139,7 @@ def public_invoice_shape(record: dict[str, Any]) -> dict[str, Any]:
         for item in record.get("payments", [])
     ]
     public["payment_records"] = [
-        {key: item.get(key) for key in ("amount", "currency", "method", "paid_at")}
+        {key: item.get(key) for key in ("amount", "currency", "method", "paid_at", "date_confirmed")}
         for item in record.get("payment_records", [])
     ]
     public["renewal_items"] = [

@@ -32,7 +32,7 @@ def income(start: date = Query(...), end: date = Query(...), _: Principal = Depe
         raise HTTPException(422, "The end date must be on or after the start date")
     try:
         invoices = all_records(gateway, "invoices", "id,client_id,invoice_number,project_title,status,project_value,currency,issue_date,due_date,clients(name,company)")
-        payments = all_records(gateway, "payments", "id,invoice_id,amount,currency,paid_at,method,reference")
+        payments = all_records(gateway, "payments", "id,invoice_id,amount,currency,paid_at,method,reference,date_confirmed")
         return {"income": income_report(invoices, payments, start, end, datetime.now(COLOMBO).date())}
     except HTTPException:
         raise
@@ -53,11 +53,11 @@ def dashboard(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        clients = [item for item in all_records(gateway, "clients", "id,name,company,email,phone,status") if item["status"] != "archived"]
-        agreements = all_records(gateway, "agreements", "id,source_invoice_id,client_id,title,project_title,status,sent_at,viewed_at,expires_at,updated_at,renewal_amount,renewal_currency,renewal_due_date,clients(name,company,email,phone)")
+        clients = [item for item in all_records(gateway, "clients", "id,name,company,email,phone,status,deleted_at") if item["status"] != "archived" and not item.get("deleted_at")]
+        agreements = [item for item in all_records(gateway, "agreements", "id,deleted_at,source_invoice_id,client_id,title,project_title,status,sent_at,viewed_at,expires_at,updated_at,renewal_amount,renewal_currency,renewal_due_date,clients(name,company,email,phone)") if not item.get("deleted_at")]
         all_invoices = all_records(gateway, "invoices", "id,agreement_id,invoice_kind,renewal_source_invoice_id,renewal_period_date,invoice_number,project_title,status,project_value,currency,due_date,renewal_amount,renewal_currency,renewal_due_date,client_id,clients(name,company,email,phone)")
         invoices = [item for item in all_invoices if item["status"] != "void"]
-        payments = all_records(gateway, "payments", "id,invoice_id,amount,currency,paid_at")
+        payments = all_records(gateway, "payments", "id,invoice_id,amount,currency,paid_at,date_confirmed")
         projects = rows(gateway.service.table("portfolio_projects").select("id,published").execute())
         activity = rows(
             gateway.service.table("audit_logs")
@@ -144,7 +144,7 @@ def dashboard(
         ]
         revenue_by_month: dict[str, Decimal] = defaultdict(Decimal)
         for payment in payments:
-            if payment.get("currency") != "LKR" or not payment.get("paid_at"):
+            if payment.get("currency") != "LKR" or not payment.get("paid_at") or payment.get("date_confirmed") is False:
                 continue
             try:
                 paid_at = datetime.fromisoformat(str(payment["paid_at"]).replace("Z", "+00:00"))

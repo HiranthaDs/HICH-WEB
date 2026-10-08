@@ -58,7 +58,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         paid_for_phase = sum((Decimal(str(item.get("amount") or 0)) for item in linked), Decimal())
         milestone_amount = Decimal(str(milestone.get("amount") or 0))
         is_paid = milestone.get("status") == "paid" or (milestone_amount > 0 and paid_for_phase >= milestone_amount)
-        paid_at = linked[0].get("paid_at") if linked else None
+        paid_at = linked[0].get("paid_at") if linked and linked[0].get("date_confirmed") is not False else None
         phases.append(
             {
                 "id": milestone.get("id"),
@@ -98,7 +98,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _get(invoice_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
-    result = gateway.service.table("invoices").select(INVOICE_SELECT).eq("id", str(invoice_id)).limit(1).execute()
+    result = gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").eq("id", str(invoice_id)).limit(1).execute()
     return _shape(first(result, "Invoice"))
 
 
@@ -111,7 +111,7 @@ def list_invoices(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        query = gateway.service.table("invoices").select(INVOICE_SELECT).order("created_at", desc=True).order("id")
+        query = gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").order("created_at", desc=True).order("id")
         if invoice_status:
             query = query.eq("status", invoice_status)
         result = rows(query.range(offset, offset + limit - 1).execute())
@@ -303,8 +303,8 @@ def void_invoice(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> Response:
     try:
-        first(gateway.service.table("invoices").update({"status": "void"}).eq("id", str(invoice_id)).execute(), "Invoice")
-        audit(gateway.service, request, settings, "void", "invoice", invoice_id, principal)
+        first(gateway.service.table("invoices").update({"status": "void", "deleted_at": datetime.now(timezone.utc).isoformat()}).eq("id", str(invoice_id)).execute(), "Invoice")
+        audit(gateway.service, request, settings, "delete", "invoice", invoice_id, principal)
         return Response(status_code=204)
     except HTTPException:
         raise
@@ -418,6 +418,8 @@ def update_payment(
         if payload.amount < Decimal(str(current["amount"])):
             require_deletion_pin(request, settings, principal)
     changes = json_ready(payload, exclude_unset=True)
+    if payload.paid_at is not None:
+        changes["date_confirmed"] = True
     for key in {"milestone_id", "method", "reference", "notes"} & payload.model_fields_set:
         if getattr(payload, key) is None:
             changes[key] = None
@@ -549,7 +551,7 @@ def get_public_invoice(
         found = rows(gateway.service.table("invoices").select(INVOICE_SELECT)
                      .eq("share_token_hash", invoice_token_hash(token, settings))
                      .eq("share_active", True).limit(1).execute())
-        if not found or found[0].get("status") in {"draft", "void"}:
+        if not found or found[0].get("deleted_at") or found[0].get("status") in {"draft", "void"}:
             raise HTTPException(status_code=404, detail="Invoice link is unavailable")
         record = found[0]
         expires_at = record.get("share_expires_at")

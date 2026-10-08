@@ -182,7 +182,7 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
 
 def _agreement_by_id(agreement_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
     return first(
-        gateway.service.table("agreements").select(AGREEMENT_SELECT).eq("id", str(agreement_id)).limit(1).execute(),
+        gateway.service.table("agreements").select(AGREEMENT_SELECT).is_("deleted_at", "null").eq("id", str(agreement_id)).limit(1).execute(),
         "Agreement",
     )
 
@@ -192,7 +192,7 @@ def _agreement_by_token(token: str, settings: Settings, gateway: SupabaseGateway
         raise HTTPException(status_code=404, detail="Agreement not found")
     digest = hash_public_token(token, settings.token_hash_pepper.get_secret_value())
     record = first(
-        gateway.service.table("agreements").select(AGREEMENT_SELECT).eq("access_token_hash", digest).limit(1).execute(),
+        gateway.service.table("agreements").select(AGREEMENT_SELECT).eq("access_token_hash", digest).is_("deleted_at", "null").limit(1).execute(),
         "Agreement",
     )
     expiry = record.get("expires_at")
@@ -249,7 +249,7 @@ def list_agreements(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        query = gateway.service.table("agreements").select(AGREEMENT_SELECT).order("created_at", desc=True).order("id")
+        query = gateway.service.table("agreements").select(AGREEMENT_SELECT).is_("deleted_at", "null").order("created_at", desc=True).order("id")
         if agreement_status:
             query = query.eq("status", agreement_status)
         result = rows(query.range(offset, offset + limit - 1).execute())
@@ -447,17 +447,16 @@ def delete_or_void_agreement(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> Response:
     current = _agreement_by_id(agreement_id, gateway)
-    if current.get("status") == "signed":
-        raise HTTPException(status_code=409, detail="Signed agreements are immutable")
     try:
-        if current.get("status") == "draft":
-            gateway.service.table("agreements").delete().eq("id", str(agreement_id)).execute()
-            action = "delete"
-        else:
-            gateway.service.table("agreements").update({"status": "void", "access_token_hash": None}).eq("id", str(agreement_id)).execute()
-            action = "void"
-        audit(gateway.service, request, settings, action, "agreement", agreement_id, principal)
+        changes = {"deleted_at": utcnow().isoformat()}
+        if current.get("status") != "signed":
+            changes.update({"status": "void", "access_token_hash": None})
+        first(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).execute(), "Agreement")
+        audit(gateway.service, request, settings, "delete", "agreement", agreement_id, principal,
+              {"previous_status": current.get("status"), "evidence_retained": True})
         return Response(status_code=204)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise db_failure(exc, "remove the agreement") from exc
 

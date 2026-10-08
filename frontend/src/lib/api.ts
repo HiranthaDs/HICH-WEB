@@ -174,7 +174,7 @@ export const api = {
   auth: {
     changePassword: (current_password: string, password: string) => request<{ message: string }>('/auth/change-password', { method: 'POST', body: { current_password, password } }),
     async users() { return unwrap<PortalUser[]>(await request('/auth/users'), ['users']) },
-    inviteUser: (data: { email: string; full_name: string; role: string }) => request<{ message: string; user: PortalUser }>('/auth/users', { method: 'POST', body: data }),
+    inviteUser: (data: { email: string; full_name: string; role: string; temporary_password?: string }) => request<{ message: string; user: PortalUser }>('/auth/users', { method: 'POST', body: data }),
     async updateUser(id: string, data: { full_name: string; role: string; active: boolean }) { return unwrap<PortalUser>(await request(`/auth/users/${id}`, { method: 'PUT', body: data, headers: data.active ? undefined : { 'X-Deletion-PIN': deletionPin() } }), ['user']) },
     recoverUser: (id: string) => request<{ message: string }>(`/auth/users/${id}/recover`, { method: 'POST' }),
     recover: (email: string) => request<{ message: string }>('/auth/recover', { method: 'POST', body: { email } }),

@@ -4,9 +4,11 @@
     "Partial payment receipt retains amount, milestone and transfer reference",
     "Invoice copies contact, budget, payments, renewal and fee into agreement; newest agreement first",
     "Staff invited by email with no admin-selected password",
-    "Incorrect deletion PIN leaves data unchanged; correct PIN sent to backend",
+    "Admin-selected temporary password is submitted and login credentials are shown once",
+    "Visible agreement delete accepts PIN and stays removed after reload, including signed agreements",
+    "Incorrect deletion PIN leaves data unchanged; correct PIN deletes and stays removed after reload",
     "Settings, agreement, invoice, client profile and income fit 320 / 390 px"
   ],
   "errors": [],
-  "interceptedWrites": 9
+  "interceptedWrites": 11
 }

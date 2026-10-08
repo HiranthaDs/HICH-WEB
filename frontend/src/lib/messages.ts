@@ -11,7 +11,7 @@ export function invoiceMessage(invoice: Invoice): ClientMessage {
   const balance = Math.max(0, total - paid)
   if (invoice.invoice_kind === 'renewal') {
     const services = (invoice.renewal_items || []).map(item => `• ${item.description}: ${money(item.amount, invoice.currency)}`).join('\n')
-    const receipts = (invoice.payment_records || []).map(receipt => `• ${formatDate(receipt.paid_at)}: ${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`).join('\n')
+    const receipts = (invoice.payment_records || []).map(receipt => `• ${receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at)}: ${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`).join('\n')
     return { subject: `Hich Web | ${invoice.reference || 'Renewal invoice'} | ${balance > 0 ? 'Domain & hosting renewal invoice' : 'Paid renewal invoice'}`, body: [
       greeting(getClientName(invoice.client, invoice.client_name)),
       balance > 0 ? 'Your domain / hosting renewal invoice is ready.' : 'Thank you. We have received your renewal payment. Your paid domain / hosting renewal invoice is available below for your records.',

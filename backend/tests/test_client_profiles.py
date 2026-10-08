@@ -14,6 +14,11 @@ class Query:
         self.filters = []
         self.start, self.end = 0, None
 
+    def is_(self, name, value):
+        assert value == "null"
+        self.filters.append(lambda row: row.get(name) is None)
+        return self
+
     def select(self, _): return self
     def order(self, *_, **__): return self
     def eq(self, key, value):
@@ -60,6 +65,18 @@ def test_unknown_client_profile_returns_not_found():
     with pytest.raises(HTTPException) as error:
         get_client_profile(uuid4(), None, gateway({"clients": []}))
     assert error.value.status_code == 404
+
+
+def test_deleted_clients_and_documents_do_not_reappear_in_profile():
+    client_id = uuid4()
+    client = {"id": str(client_id), "name": "Test Client"}
+    data = {"clients": [client], "invoices": [{"id": "deleted-invoice", "client_id": str(client_id), "deleted_at": "2026-10-08"}], "agreements": [{"id": "deleted-agreement", "client_id": str(client_id), "deleted_at": "2026-10-08"}]}
+    profile = get_client_profile(client_id, None, gateway(data))["profile"]
+    assert profile["invoices"] == [] and profile["agreements"] == []
+    client["deleted_at"] = "2026-10-08"
+    with pytest.raises(HTTPException) as exc:
+        get_client_profile(client_id, None, gateway(data))
+    assert exc.value.status_code == 404
 
 
 def test_client_totals_preserve_each_currency_and_paginate_all_invoices():

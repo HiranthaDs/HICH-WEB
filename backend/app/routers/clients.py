@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -27,7 +28,7 @@ def list_clients(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        query = gateway.service.table("clients").select("*").order("created_at", desc=True).order("id")
+        query = gateway.service.table("clients").select("*").is_("deleted_at", "null").order("created_at", desc=True).order("id")
         if q:
             query = query.or_(f"name.ilike.%{q}%,company.ilike.%{q}%,email.ilike.%{q}%")
         if client_status:
@@ -106,7 +107,7 @@ def get_client(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        record = first(gateway.service.table("clients").select("*").eq("id", str(client_id)).limit(1).execute(), "Client")
+        record = first(gateway.service.table("clients").select("*").is_("deleted_at", "null").eq("id", str(client_id)).limit(1).execute(), "Client")
         return {"client": record}
     except HTTPException:
         raise
@@ -126,7 +127,7 @@ def get_client_profile(
     def documents(table: str, select: str) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         while True:
-            batch = rows(gateway.service.table(table).select(select).eq("client_id", str(client_id))
+            batch = rows(gateway.service.table(table).select(select).is_("deleted_at", "null").eq("client_id", str(client_id))
                          .order("created_at", desc=True).order("id")
                          .range(len(result), len(result) + 499).execute())
             result.extend(batch)
@@ -134,7 +135,7 @@ def get_client_profile(
                 return result
 
     try:
-        client = first(gateway.service.table("clients").select("*").eq("id", str(client_id)).limit(1).execute(), "Client")
+        client = first(gateway.service.table("clients").select("*").is_("deleted_at", "null").eq("id", str(client_id)).limit(1).execute(), "Client")
         invoices = [invoice_shape(record) for record in documents("invoices", INVOICE_SELECT)]
         agreements = documents("agreements", "id,client_id,reference,title,project_title,status,amount,currency,renewal_amount,renewal_currency,renewal_due_date,created_at,updated_at,sent_at,signed_at,signer_name,signer_job_role,expires_at,version")
         return {"profile": {"client": client, "invoices": invoices, "agreements": agreements}}
@@ -162,7 +163,7 @@ def update_client(
     if not changes:
         return get_client(client_id, principal, gateway)
     try:
-        updated = first(gateway.service.table("clients").update(changes).eq("id", str(client_id)).execute(), "Client")
+        updated = first(gateway.service.table("clients").update(changes).eq("id", str(client_id)).is_("deleted_at", "null").execute(), "Client")
         audit(gateway.service, request, settings, "update", "client", client_id, principal, {"fields": sorted(changes)})
         return {"client": updated}
     except HTTPException:
@@ -180,8 +181,8 @@ def archive_client(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> Response:
     try:
-        first(gateway.service.table("clients").update({"status": "archived"}).eq("id", str(client_id)).execute(), "Client")
-        audit(gateway.service, request, settings, "archive", "client", client_id, principal)
+        first(gateway.service.table("clients").update({"status": "archived", "deleted_at": datetime.now(timezone.utc).isoformat()}).eq("id", str(client_id)).execute(), "Client")
+        audit(gateway.service, request, settings, "delete", "client", client_id, principal)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except HTTPException:
         raise

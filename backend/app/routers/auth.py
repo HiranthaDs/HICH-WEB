@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from supabase_auth.errors import AuthApiError
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr
 
 from ..config import Settings, get_settings
 from ..data import audit
@@ -221,6 +221,7 @@ class CreateUserRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=160)
     role: str = Field(default="staff", pattern="^(admin|staff)$")
+    temporary_password: SecretStr | None = Field(default=None, min_length=12, max_length=256)
 
 
 class UpdateUserRequest(BaseModel):
@@ -274,6 +275,8 @@ def create_user(payload: CreateUserRequest, request: Request, principal: Princip
         existing = rows(gateway.service.table("profiles").select("id,portal_access,role,active").eq("email", email).limit(1).execute())
         if existing and (existing[0].get("portal_access") or is_allowed_admin(email, settings.admin_email_set)):
             raise HTTPException(409, "This user already exists. Edit their access instead.")
+        if existing and payload.temporary_password is not None:
+            raise HTTPException(409, "This email already has an account. Use the email invitation option to grant access without replacing its password.")
         if existing:
             saved = first(gateway.service.table("profiles").update({"full_name": payload.full_name, "role": payload.role, "active": True, "portal_access": True}).eq("id", existing[0]["id"]).execute(), "User")
             message = "Existing account granted portal access. Password reset email requested."
@@ -283,10 +286,16 @@ def create_user(payload: CreateUserRequest, request: Request, principal: Princip
                 message = "Portal access granted. Reset email could not be requested; use Send password reset to retry."
             audit(gateway.service, request, settings, "user_access_granted", "user", saved["id"], principal, {"role": payload.role})
             return {"user": saved, "message": message}
-        invited = gateway.service.auth.admin.invite_user_by_email(email, options={
-            "redirect_to": f"{str(settings.public_app_url).rstrip('/')}/admin/reset-password",
-            "data": {"full_name": payload.full_name},
-        })
+        if payload.temporary_password is not None:
+            invited = gateway.service.auth.admin.create_user({
+                "email": email, "password": payload.temporary_password.get_secret_value(),
+                "email_confirm": True, "user_metadata": {"full_name": payload.full_name},
+            })
+        else:
+            invited = gateway.service.auth.admin.invite_user_by_email(email, options={
+                "redirect_to": f"{str(settings.public_app_url).rstrip('/')}/admin/reset-password",
+                "data": {"full_name": payload.full_name},
+            })
         if not invited.user:
             raise HTTPException(502, "The authentication service did not return the invited user")
         user_id = str(invited.user.id)
@@ -298,8 +307,8 @@ def create_user(payload: CreateUserRequest, request: Request, principal: Princip
             # Invitation can be delivered before profile provisioning; default staff must not gain access.
             gateway.service.auth.admin.delete_user(user_id)
             raise exc
-        audit(gateway.service, request, settings, "user_invited", "user", user_id, principal, {"role": payload.role})
-        return {"user": saved, "message": "Invitation sent. The user sets their own password through the secure email link."}
+        audit(gateway.service, request, settings, "user_created" if payload.temporary_password else "user_invited", "user", user_id, principal, {"role": payload.role})
+        return {"user": saved, "message": "User created. Share the temporary password privately; they can keep it or change it in Settings." if payload.temporary_password else "Invitation sent. The user sets their own password through the secure email link."}
     except HTTPException:
         raise
     except AuthApiError as exc:

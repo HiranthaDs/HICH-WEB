@@ -28,6 +28,7 @@ def income_report(invoices: list[dict], payments: list[dict], start: date, end: 
     methods = defaultdict(Decimal)
     clients = {}
     ledger = []
+    undated = []
 
     def summary(currency):
         return summaries.setdefault(currency, {"currency": currency, "invoiced": Decimal(), "collected": Decimal(), "collected_on_void": Decimal(), "lifetime_collected": Decimal(), "outstanding": Decimal(), "draft_value": Decimal(), "overpayments": Decimal(), "overdue": Decimal(), "invoices": 0, "receipts": 0, "aging": {key: Decimal() for key in ("not_due", "1_30", "31_60", "61_90", "over_90", "no_due_date")}})
@@ -42,6 +43,11 @@ def income_report(invoices: list[dict], payments: list[dict], start: date, end: 
             paid[str(invoice["id"])] += amount
         totals = summary(currency)
         totals["lifetime_collected"] += amount
+        if payment.get("date_confirmed") is False:
+            totals["undated_collected"] = totals.get("undated_collected", Decimal()) + amount
+            client = invoice.get("clients") or {}
+            undated.append({"invoice_id": invoice["id"], "reference": invoice.get("invoice_number"), "client_name": client.get("company") or client.get("name"), "amount": amount, "currency": currency, "method": payment.get("method")})
+            continue
         day = local_date(payment.get("paid_at"))
         if not day or not start <= day <= end:
             continue
@@ -86,4 +92,4 @@ def income_report(invoices: list[dict], payments: list[dict], start: date, end: 
         if balance:
             client = invoice.get("clients") or {}
             receivables.append({"invoice_id": invoice["id"], "client_id": invoice.get("client_id"), "reference": invoice.get("invoice_number"), "client_name": client.get("company") or client.get("name"), "project_title": invoice.get("project_title"), "currency": currency, "total": value, "paid": received, "balance": balance, "due_date": invoice.get("due_date"), "days_overdue": max(0, days or 0)})
-    return {"start": start.isoformat(), "end": end.isoformat(), "as_of": today.isoformat(), "currencies": list(summaries.values()), "monthly": [{"currency": currency, "month": month, "collected": value} for (currency, month), value in sorted(months.items())], "methods": [{"currency": currency, "method": method, "collected": value} for (currency, method), value in sorted(methods.items())], "clients": sorted(clients.values(), key=lambda entry: entry["collected"], reverse=True), "ledger": sorted(ledger, key=lambda entry: str(entry["paid_at"]), reverse=True), "receivables": sorted(receivables, key=lambda entry: entry["days_overdue"], reverse=True), "note": "Cash receipts use payment dates in Asia/Colombo and include retained receipts on void invoices. Voiding is not a refund. Receivables are current balances on issued invoices; drafts and void invoices are excluded. This is a cash and receivables report, not net profit: expenses, refunds and exchange-rate conversion are not recorded here."}
+    return {"undated_receipts": undated, "start": start.isoformat(), "end": end.isoformat(), "as_of": today.isoformat(), "currencies": list(summaries.values()), "monthly": [{"currency": currency, "month": month, "collected": value} for (currency, month), value in sorted(months.items())], "methods": [{"currency": currency, "method": method, "collected": value} for (currency, method), value in sorted(methods.items())], "clients": sorted(clients.values(), key=lambda entry: entry["collected"], reverse=True), "ledger": sorted(ledger, key=lambda entry: str(entry["paid_at"]), reverse=True), "receivables": sorted(receivables, key=lambda entry: entry["days_overdue"], reverse=True), "note": "Cash receipts use payment dates in Asia/Colombo and include retained receipts on void invoices. Voiding is not a refund. Receivables are current balances on issued invoices; drafts and void invoices are excluded. This is a cash and receivables report, not net profit: expenses, refunds and exchange-rate conversion are not recorded here."}

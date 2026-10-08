@@ -93,6 +93,11 @@ class FakeQuery:
         self.filters = []
         self.changes = None
 
+    def is_(self, name, value):
+        assert value == "null"
+        self.filters.append(lambda row: row.get(name) is None)
+        return self
+
     def select(self, _): return self
     def limit(self, _): return self
 
@@ -138,6 +143,23 @@ def test_default_template_is_complete_and_editable():
         assert required in GENERAL_AGREEMENT.lower()
     agreement.terms["Visit and travel fees"] = "LKR 5,000 approved before travel"
     assert AgreementCreate(client_name="Other").terms["Visit and travel fees"] != agreement.terms["Visit and travel fees"]
+
+
+@pytest.mark.parametrize("status", ["draft", "sent", "signed", "void"])
+def test_delete_removes_agreement_and_public_link_but_retains_evidence(settings, status):
+    row = record(settings) | {"status": status, "signed_pdf_sha256": "a" * 64}
+    gateway = FakeGateway(row)
+    response = agreements.delete_or_void_agreement(row["id"], request(), None, settings, gateway)
+    assert response.status_code == 204
+    assert gateway.row["deleted_at"]
+    assert gateway.row["signed_pdf_sha256"] == row["signed_pdf_sha256"]
+    assert gateway.row["status"] == ("signed" if status == "signed" else "void")
+    with pytest.raises(HTTPException) as exc:
+        agreements._agreement_by_id(row["id"], gateway)
+    assert exc.value.status_code == 404
+    with pytest.raises(HTTPException) as exc:
+        agreements._agreement_by_token(TOKEN, settings, gateway)
+    assert exc.value.status_code == 404
 
 
 def test_signing_requires_role_current_version_and_explicit_boolean_consent(settings):

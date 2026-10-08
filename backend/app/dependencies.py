@@ -88,8 +88,10 @@ def portal_profile(email: str, settings: Settings, gateway: SupabaseGateway, use
 
 
 def require_deletion_pin(request: Request, settings: Settings, principal: Principal) -> None:
-    enforce_rate_limit(f"delete-pin:{principal.id}:{client_ip(request, settings.trust_proxy_headers)}", 8, 900)
-    if not hmac.compare_digest(request.headers.get("x-deletion-pin", ""), settings.deletion_pin.get_secret_value()):
+    supplied = request.headers.get("x-deletion-pin", "").strip().encode("utf-8")
+    if not hmac.compare_digest(supplied, settings.deletion_pin.get_secret_value().encode("utf-8")):
+        # Successful confirmations must not lock the operator out after eight deletions.
+        enforce_rate_limit(f"delete-pin:{principal.id}:{client_ip(request, settings.trust_proxy_headers)}", 8, 900)
         raise HTTPException(403, "Enter the correct deletion PIN to confirm this action.")
 
 
