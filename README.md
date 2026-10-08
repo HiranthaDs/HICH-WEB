@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Hich Client Portal
 
 Hich Client Portal is a full-stack operations workspace for managing clients, agreements, invoices, and published project work. It includes a private administrator portal and a public, token-based agreement-signing experience.
@@ -146,6 +145,3 @@ Electronic-signature requirements vary by jurisdiction. The portal records conse
 - [Supabase API key security](https://supabase.com/docs/guides/getting-started/api-keys)
 - [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Render FastAPI deployment](https://render.com/docs/deploy-fastapi)
-=======
-# HICH-WEB
->>>>>>> ae8d5bf0f51fbdcc02b30f5a18e79a83374d2a0e
