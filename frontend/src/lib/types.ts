@@ -8,6 +8,15 @@ export interface User {
   avatar_url?: string | null
 }
 
+export interface PortalUser {
+  id: string
+  email: string
+  full_name?: string
+  role: 'admin' | 'staff'
+  active: boolean
+  created_at?: string
+}
+
 export interface Client {
   id: Id
   name: string
@@ -34,6 +43,11 @@ export interface ClientProfile {
 export type AgreementStatus = 'draft' | 'sent' | 'viewed' | 'signed' | 'expired' | 'void' | string
 
 export interface Agreement {
+  source_invoice_id?: Id
+  visiting_fee_lkr?: number
+  payment_schedule?: Array<{ name: string; amount: number; is_paid?: boolean; paid_at?: string; received_amount?: number }>
+  payment_instructions?: string
+  project_due_date?: string
   renewal_amount?: number
   renewal_currency?: string
   renewal_due_date?: string
@@ -70,6 +84,8 @@ export interface Agreement {
 export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'void' | string
 
 export interface Invoice {
+  agreement_id?: Id
+  client_email?: string
   id: Id
   reference?: string
   client_id?: Id
@@ -105,7 +121,9 @@ export interface Invoice {
     is_paid?: boolean
     isPaid?: boolean
     paid_at?: string
+    paid_amount?: number
   }>
+  payment_records?: Array<{ id: string; milestone_id?: string; amount: number; currency: string; paid_at: string; method?: string; reference?: string; notes?: string }>
 }
 
 export interface PortfolioProject {
@@ -171,6 +189,8 @@ export interface DashboardData {
   recent_activity?: AuditEvent[]
   upcoming_invoices?: Invoice[]
   upcoming_renewals?: Array<{
+    email?: string
+    project_title?: string
     id?: Id
     client_name?: string
     client?: Client | string
@@ -183,6 +203,19 @@ export interface DashboardData {
   }>
   agreement_statuses?: Array<{ name?: string; status?: string; value?: number; count?: number }>
   intelligence?: BusinessIntelligence
+}
+
+export interface IncomeReport {
+  start: string
+  end: string
+  as_of: string
+  note: string
+  currencies: Array<{ currency: string; invoiced: number; collected: number; collected_on_void: number; lifetime_collected: number; outstanding: number; draft_value: number; overpayments: number; overdue: number; invoices: number; receipts: number; aging: Record<string, number> }>
+  monthly: Array<{ currency: string; month: string; collected: number }>
+  methods: Array<{ currency: string; method: string; collected: number }>
+  clients: Array<{ currency: string; client_id: string; name: string; collected: number; receipts: number }>
+  ledger: Array<{ id: string; invoice_id: string; client_id: string; client_name: string; reference: string; project_title: string; amount: number; currency: string; method: string; payment_reference?: string; paid_at: string; invoice_status: string }>
+  receivables: Array<{ invoice_id: string; client_id: string; reference: string; client_name: string; project_title: string; currency: string; total: number; paid: number; balance: number; due_date?: string; days_overdue: number }>
 }
 
 export type InsightSeverity = 'critical' | 'warning' | 'opportunity' | 'success' | 'info'

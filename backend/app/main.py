@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .middleware import BrowserOriginMiddleware, RequestContextMiddleware
-from .routers import agreements, audit, auth, clients, dashboard, health, invoices, portfolio, operations
+from .routers import agreements, audit, auth, clients, dashboard, health, invoices, portfolio, operations, communications
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -34,7 +34,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        version="1.0.0",
+        version="1.1.0",
         docs_url="/api/docs" if settings.environment != "production" else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.environment != "production" else None,
@@ -47,12 +47,13 @@ def create_app() -> FastAPI:
         allow_origins=settings.allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+        allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token", "X-Deletion-PIN"],
     )
 
     prefix = settings.api_prefix.rstrip("/")
     app.include_router(health.router, prefix=prefix)
     app.include_router(auth.router, prefix=prefix)
+    app.include_router(communications.router, prefix=prefix)
     app.include_router(dashboard.router, prefix=prefix)
     app.include_router(clients.router, prefix=prefix)
     app.include_router(agreements.router, prefix=prefix)

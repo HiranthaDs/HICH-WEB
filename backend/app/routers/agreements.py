@@ -15,8 +15,9 @@ from PIL import Image, UnidentifiedImageError
 
 from ..config import Settings, get_settings
 from ..agreement_template import CONSENT_TEXT, template_payload
+from ..commercial_terms import scheduled_terms
 from ..data import audit, db_failure, first, rows
-from ..dependencies import Principal, current_admin
+from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..models import AgreementCreate, AgreementUpdate, SignAgreementRequest, json_ready
 from ..pdf import agreement_pdf
 from ..security import (
@@ -39,6 +40,7 @@ DOCUMENT_FIELDS = (
     "reference", "client_id", "client_name", "client_email", "client_phone", "project_id",
     "title", "project_title", "description", "terms", "amount", "currency", "expires_at",
     "renewal_amount", "renewal_currency", "renewal_due_date",
+    "source_invoice_id", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date",
 )
 
 
@@ -62,6 +64,8 @@ def _document_digest(record: dict[str, Any]) -> str:
         snapshot["amount"] = format(Decimal(str(snapshot["amount"])), ".2f")
     if snapshot.get("renewal_amount") is not None:
         snapshot["renewal_amount"] = format(Decimal(str(snapshot["renewal_amount"])), ".2f")
+    if snapshot.get("visiting_fee_lkr") is not None:
+        snapshot["visiting_fee_lkr"] = format(Decimal(str(snapshot["visiting_fee_lkr"])), ".2f")
     return content_sha256(json.dumps(snapshot, sort_keys=True, default=str, ensure_ascii=False))
 
 
@@ -155,6 +159,10 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
         "renewal_amount": record.get("renewal_amount"),
         "renewal_currency": record.get("renewal_currency"),
         "renewal_due_date": record.get("renewal_due_date"),
+        "visiting_fee_lkr": record.get("visiting_fee_lkr"),
+        "payment_schedule": record.get("payment_schedule"),
+        "payment_instructions": record.get("payment_instructions"),
+        "project_due_date": record.get("project_due_date"),
         "currency": record.get("currency") or "LKR",
         "created_at": record.get("created_at"),
         "sent_at": record.get("sent_at"),
@@ -251,6 +259,27 @@ def list_agreements(
         raise db_failure(exc, "load agreements") from exc
 
 
+@router.get("/from-invoice/{invoice_id}")
+def agreement_from_invoice(invoice_id: UUID, _: Principal = Depends(current_admin),
+                           gateway: SupabaseGateway = Depends(get_supabase)):
+    from .invoices import _get
+    invoice = _get(invoice_id, gateway)
+    if invoice.get("status") == "void":
+        raise HTTPException(409, "Choose an active invoice for the agreement")
+    client = invoice.get("clients") or {}
+    phases = [{"name": p["name"], "amount": p["amount"], "is_paid": p["is_paid"], "paid_at": p.get("paid_at"), "received_amount": p.get("paid_amount", "0")} for p in invoice.get("payments", []) if Decimal(str(p.get("amount") or 0)) > 0]
+    return {"agreement": {
+        **template_payload(), "source_invoice_id": str(invoice_id), "client_id": invoice["client_id"],
+        "client_name": client.get("name") or invoice.get("client_name"), "client_email": client.get("email"),
+        "client_phone": client.get("phone"), "project_title": invoice.get("project_title"),
+        "amount": invoice["amount"], "currency": invoice["currency"], "payment_schedule": phases,
+        "visiting_fee_lkr": str(next((Decimal(str(p["amount"])) for p in phases if "visit" in p["name"].lower() and Decimal(5000) <= Decimal(str(p["amount"])) <= Decimal(15000)), Decimal())) if invoice["currency"] == "LKR" else "0",
+        "payment_instructions": invoice.get("payment_instructions"), "project_due_date": invoice.get("due_date"),
+        "renewal_amount": invoice.get("renewal_amount"), "renewal_currency": invoice.get("renewal_currency"),
+        "renewal_due_date": invoice.get("renewal_due_date"),
+    }}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_agreement(
     payload: AgreementCreate,
@@ -260,6 +289,7 @@ def create_agreement(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     token = new_public_token()
+    prepared_terms = scheduled_terms(json_ready(payload))
     try:
         client_id = _resolve_client(payload, principal, gateway)
         client = first(gateway.service.table("clients").select("name,company,email,phone").eq("id", str(client_id)).limit(1).execute(), "Client")
@@ -281,6 +311,11 @@ def create_agreement(
                 "sent_at": utcnow().isoformat() if payload.send_immediately else None,
             }
         )
+        if payload.source_invoice_id:
+            source = first(gateway.service.table("invoices").select("client_id,status").eq("id", str(payload.source_invoice_id)).limit(1).execute(), "Invoice")
+            if source["client_id"] != str(client_id) or source["status"] == "void":
+                raise HTTPException(422, "The source invoice must belong to this client and remain active")
+        record["terms"] = prepared_terms
         record["content_sha256"] = _document_digest(record)
         if payload.send_immediately:
             _ensure_shareable(record)
@@ -323,6 +358,8 @@ def update_agreement(
         raise HTTPException(status_code=409, detail="Signed agreements are immutable")
     if payload.status == "signed":
         raise HTTPException(status_code=422, detail="Agreements can only become signed through the secure signing flow")
+    if payload.status in {"void", "expired"}:
+        require_deletion_pin(request, settings, principal)
     if payload.expected_version is not None and payload.expected_version != current.get("version", 1):
         raise HTTPException(status_code=409, detail="This agreement changed. Reload before saving.")
     changes = json_ready(payload, exclude_unset=True, exclude={"content", "expected_version"})
@@ -334,6 +371,12 @@ def update_agreement(
     if payload.content is not None and payload.description is None:
         changes["description"] = payload.content
     try:
+        if changes.get("source_invoice_id"):
+            source = first(gateway.service.table("invoices").select("client_id,status").eq("id", changes["source_invoice_id"]).limit(1).execute(), "Invoice")
+            if source["client_id"] != str(changes.get("client_id", current["client_id"])) or source["status"] == "void":
+                raise HTTPException(422, "The source invoice must belong to this client and remain active")
+        if changes.keys() & {"terms", "amount", "currency", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date"}:
+            changes["terms"] = scheduled_terms(current | changes)
         if "client_id" in changes:
             client = first(gateway.service.table("clients").select("name,company,email,phone").eq("id", changes["client_id"]).limit(1).execute(), "Client")
             for key, value in {"client_name": client.get("company") or client.get("name"), "client_email": client.get("email"), "client_phone": client.get("phone")}.items():

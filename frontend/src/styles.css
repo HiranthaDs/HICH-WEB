@@ -596,6 +596,34 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 .invoice-row__actions .icon-button { width: 34px; height: 34px; }
 .invoice-row__renewal { position: absolute; inset: auto 17px 10px 68px; padding: 7px 10px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; color: #986017; background: #fff4e2; cursor: pointer; font-size: 8.5px; font-weight: 720; }
 .invoice-form { display: flex; flex-direction: column; gap: 23px; }
+.invoice-form--payments-first > .milestone-editor { order: -1; border: 2px solid #5263ff; border-radius: 16px; padding: 18px; }
+.visiting-fee-editor { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; }
+.visiting-fee-editor > .field { flex: 1; min-width: 140px; }
+.account-panel { padding: 24px; margin-bottom: 20px; }
+.account-panel > h2 { margin-bottom: 10px; }
+.account-panel > p { color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
+.share-panel > .field { margin-top: 16px; }
+.email-preview { margin-top: 22px; }
+.email-preview summary { cursor: pointer; font-weight: 600; }
+.email-preview iframe { width: 100%; height: 540px; border: 1px solid var(--line); border-radius: 12px; margin-top: 14px; background: white; }
+.renewal-charge-consent { display: flex; gap: 12px; align-items: flex-start; line-height: 1.7; font-size: 13px; }
+.renewal-charge-consent input { margin-top: 6px; }
+.income-controls { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; padding: 20px; }
+.income-controls > .field { flex: 1; min-width: 140px; }
+.income-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.income-metrics article { padding: 22px; }
+.income-metrics small { color: var(--muted); }
+.income-metrics strong { display: block; font-size: clamp(18px, 2vw, 25px); margin-top: 10px; overflow-wrap: anywhere; }
+.income-breakdowns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.income-line { display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.terms-overview h2 { margin: 8px 0 12px; font-size: clamp(22px, 3vw, 36px); }
+.terms-overview p { color: var(--muted); line-height: 1.8; }
+.terms-overview__cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+.terms-overview__cards article { border: 1px solid var(--line); border-radius: 16px; padding: 22px; background: #fff; }
+.terms-overview__cards h3 { margin-bottom: 10px; }
+.terms-overview small { color: var(--muted); line-height: 1.7; display: block; }
+@media (max-width: 900px) { .income-breakdowns { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .income-metrics, .terms-overview__cards { grid-template-columns: 1fr; } .account-panel { padding: 18px; } .invoice-form--payments-first > .milestone-editor { padding: 12px; } }
 .milestone-editor, .renewal-editor, .image-manager { padding: 19px; border: 1px solid var(--line); border-radius: 16px; background: #f8faf7; }
 .milestone-editor > header, .image-manager > header { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .milestone-editor .eyebrow, .renewal-editor .eyebrow, .image-manager .eyebrow { margin: 0 0 3px; }

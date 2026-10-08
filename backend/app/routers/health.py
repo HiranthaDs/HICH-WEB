@@ -11,7 +11,7 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 def health(settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name, "environment": settings.environment}
+    return {"status": "ok", "service": settings.app_name, "environment": settings.environment, "version": "1.1.0"}
 
 
 @router.get("/health/ready")
@@ -20,8 +20,8 @@ def readiness(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, str]:
     try:
-        gateway.service.table("profiles").select("id").limit(1).execute()
+        gateway.service.table("profiles").select("id,portal_access").limit(1).execute()
+        gateway.service.table("agreements").select("id,source_invoice_id,visiting_fee_lkr,payment_schedule").limit(1).execute()
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database is unavailable") from exc
     return {"status": "ready", "service": settings.app_name, "environment": settings.environment}
-

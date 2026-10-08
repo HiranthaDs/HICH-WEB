@@ -106,10 +106,10 @@ export function PortfolioPage() {
     catch (requestError) { toast(requestError instanceof Error ? requestError.message : 'Visibility could not be updated.', 'error') }
   }
 
-  const remove = async () => {
+  const remove = async (pin: string) => {
     if (!deleting) return
     setDeleteBusy(true)
-    try { await api.portfolio.remove(deleting.id); setProjects((current) => current.filter((project) => project.id !== deleting.id)); setDeleting(null); toast('Portfolio project deleted.', 'success') }
+    try { await api.portfolio.remove(deleting.id, pin); setProjects((current) => current.filter((project) => project.id !== deleting.id)); setDeleting(null); toast('Portfolio project deleted.', 'success') }
     catch (requestError) { toast(requestError instanceof Error ? requestError.message : 'Project could not be deleted.', 'error') }
     finally { setDeleteBusy(false) }
   }

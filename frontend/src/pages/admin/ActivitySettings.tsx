@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext'
 import { api } from '../../lib/api'
 import { formatDate, formatRelative, titleCase } from '../../lib/format'
 import type { AuditEvent } from '../../lib/types'
+import { AccountSettings } from '../../components/AccountSettings'
 
 const eventIcon = (action: string) => action.toLowerCase().includes('sign') ? FileCheck2 : action.toLowerCase().includes('auth') || action.toLowerCase().includes('login') ? KeyRound : action.toLowerCase().includes('portfolio') ? Globe2 : Activity
 
@@ -51,6 +52,7 @@ export function SettingsPage() {
 
   return <div className="admin-page settings-page">
     <PageHeader eyebrow="Workspace" title="Settings" description="Account, deployment and integration details for this Hich Studio workspace." />
+    <AccountSettings />
     <div className="settings-grid">
       <section className="panel settings-profile"><header><span><UserRound size={19} /></span><div><h2>Administrator profile</h2><p>Your identity comes from the secure backend session.</p></div></header><div className="settings-profile__person"><Avatar name={user?.name || user?.email} image={user?.avatar_url} size="lg" /><div><strong>{user?.name || 'Hich administrator'}</strong><span>{user?.email}</span><StatusPill status={user?.role || 'admin'} /></div></div><dl><div><dt>User ID</dt><dd>{String(user?.id || '—')}</dd></div><div><dt>Access level</dt><dd>{titleCase(user?.role || 'administrator')}</dd></div><div><dt>Authentication</dt><dd>Secure cookie session</dd></div></dl></section>
       <section className="panel settings-public"><header><span><Globe2 size={19} /></span><div><h2>Public website</h2><p>Your portfolio and secure client routes share this origin.</p></div></header><div className="settings-url"><span>{publicUrl}</span><button className="icon-button" type="button" onClick={copyUrl} aria-label="Copy public website address">{copied ? <Check size={17} /> : <Clipboard size={17} />}</button><a className="icon-button" href="/" target="_blank" aria-label="Open public website"><ExternalLink size={17} /></a></div><div className="settings-route"><span>/</span><p><strong>Portfolio</strong><small>Published work and studio information</small></p></div><div className="settings-route"><span>/sign/…</span><p><strong>Agreement signing</strong><small>Token-protected client experience</small></p></div></section>

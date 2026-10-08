@@ -11,6 +11,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -242,19 +243,22 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 export function ConfirmDialog({ open, onClose, onConfirm, title, description, loading, confirmLabel = 'Delete', warning = 'This action cannot be undone.' }: {
   open: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: (pin: string) => void
   title: string
   description: string
   loading?: boolean
   confirmLabel?: string
   warning?: string
 }) {
+  const [pin, setPin] = useState('')
+  useEffect(() => { if (open) setPin('') }, [open])
   return (
     <Modal open={open} onClose={onClose} title={title} description={description} size="sm" footer={<>
       <Button variant="ghost" onClick={onClose}>Cancel</Button>
-      <Button variant="danger" loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
+      <Button variant="danger" loading={loading} disabled={!pin} onClick={() => onConfirm(pin)}>{confirmLabel}</Button>
     </>}>
       <div className="confirm-visual"><AlertCircle size={25} /><p>{warning}</p></div>
+      <Input label="Deletion PIN" type="password" inputMode="numeric" autoComplete="off" value={pin} onChange={event => setPin(event.target.value)} hint="Enter the required PIN to confirm. The server verifies it before changing data." />
     </Modal>
   )
 }

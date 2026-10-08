@@ -30,7 +30,12 @@ class TaskCreate(APIModel):
 
 
 class TaskUpdate(APIModel):
-    status: Literal["open", "done"]
+    title: str | None = Field(default=None, min_length=2, max_length=240)
+    due_date: date | None = None
+    priority: Literal["low", "normal", "high"] | None = None
+    status: Literal["open", "done"] | None = None
+    client_id: UUID | None = None
+    notes: str | None = Field(default=None, max_length=5000)
 
 
 class ChangeCreate(APIModel):
@@ -92,13 +97,29 @@ def create_task(payload: TaskCreate, request: Request, principal: Principal = De
 @router.patch("/operations/tasks/{task_id}")
 def update_task(task_id: UUID, payload: TaskUpdate, request: Request, principal: Principal = Depends(current_admin), settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase)):
     try:
-        record = first(gateway.service.table("operation_tasks").update(json_ready(payload)).eq("id", str(task_id)).execute())
-        audit(gateway.service, request, settings, payload.status, "follow_up", task_id, principal)
+        changes = json_ready(payload, exclude_unset=True)
+        for key in {"due_date", "client_id", "notes"} & payload.model_fields_set:
+            if getattr(payload, key) is None:
+                changes[key] = None
+        record = first(gateway.service.table("operation_tasks").update(changes).eq("id", str(task_id)).execute())
+        audit(gateway.service, request, settings, payload.status or "update", "follow_up", task_id, principal)
         return {"task": record}
     except HTTPException:
         raise
     except Exception as exc:
         raise db_failure(exc, "update follow-up") from exc
+
+
+@router.delete("/operations/tasks/{task_id}")
+def delete_task(task_id: UUID, request: Request, principal: Principal = Depends(current_admin), settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase)):
+    try:
+        first(gateway.service.table("operation_tasks").delete().eq("id", str(task_id)).execute(), "Follow-up")
+        audit(gateway.service, request, settings, "delete", "follow_up", task_id, principal)
+        return {"message": "Follow-up deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_failure(exc, "delete follow-up") from exc
 
 
 @router.get("/operations/changes")
@@ -139,6 +160,23 @@ def share_change(change_id: UUID, request: Request, principal: Principal = Depen
         raise
     except Exception as exc:
         raise db_failure(exc, "share scope change") from exc
+
+
+@router.put("/operations/changes/{change_id}")
+def update_change(change_id: UUID, payload: ChangeCreate, request: Request, principal: Principal = Depends(current_admin), settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase)):
+    try:
+        agreement = first(gateway.service.table("agreements").select("status,currency,project_title").eq("id", str(payload.agreement_id)).limit(1).execute(), "Agreement")
+        if agreement["status"] != "signed" or payload.currency != agreement["currency"]:
+            raise HTTPException(422, "Use a signed base agreement and its currency")
+        saved = rows(gateway.service.table("change_orders").update(json_ready(payload) | {"project_title": agreement.get("project_title"), "status": "draft", "access_token_hash": None}).eq("id", str(change_id)).in_("status", ["draft", "sent"]).execute())
+        if not saved:
+            raise HTTPException(409, "Only unapproved scope changes can be edited. Approved changes are retained as signed records.")
+        audit(gateway.service, request, settings, "update", "scope_change", change_id, principal)
+        return {"change": change_public(saved[0]) | {"agreement_id": saved[0]["agreement_id"]}}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_failure(exc, "update the scope change") from exc
 
 
 @router.post("/operations/changes/{change_id}/void")
@@ -211,6 +249,22 @@ def create_collection(payload: CollectionCreate, request: Request, principal: Pr
         raise
     except Exception as exc:
         raise db_failure(exc, "save project collection") from exc
+
+
+@router.put("/collections/{collection_id}")
+def update_collection(collection_id: UUID, payload: CollectionCreate, request: Request, principal: Principal = Depends(current_admin), settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase)):
+    ids = list(dict.fromkeys(str(value) for value in payload.project_ids))
+    try:
+        projects = rows(gateway.service.table("portfolio_projects").select("id").eq("published", True).in_("id", ids).execute())
+        if len(projects) != len(ids):
+            raise HTTPException(422, "Collections can only contain published completed projects")
+        record = first(gateway.service.table("portfolio_collections").update(json_ready(payload) | {"project_ids": ids}).eq("id", str(collection_id)).execute(), "Collection")
+        audit(gateway.service, request, settings, "update", "portfolio_collection", collection_id, principal)
+        return {"collection": collection_shape(record, settings)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_failure(exc, "update the project collection") from exc
 
 
 @router.delete("/collections/{collection_id}")

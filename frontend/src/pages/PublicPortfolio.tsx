@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { DevelopmentPreview } from '../components/DevelopmentPreview'
 import { Brand } from '../components/Brand'
+import { TermsOverview } from '../components/TermsOverview'
 import { ContactActions } from '../components/ContactActions'
 import { Button, EmptyState, ErrorState, LoadingState, Modal } from '../components/ui'
 import { copyText } from '../lib/sharing'
@@ -155,6 +156,7 @@ export function PublicPortfolio() {
           </div>
         </section>
 
+        <section className="public-section"><div className="public-container"><TermsOverview /></div></section>
         <section className="contact-band" id="contact">
           <div className="public-container contact-band__inner">
             <div><p className="eyebrow">Have something in mind?</p><h2>Let’s make the next version real.</h2></div>

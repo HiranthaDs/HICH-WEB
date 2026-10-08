@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar, Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, SearchInput, Select, StatusPill, Textarea } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
-import { api } from '../../lib/api'
+import { api, deletionPin } from '../../lib/api'
 import { formatCurrency, formatDate } from '../../lib/format'
 import { whatsappUrl } from '../../lib/sharing'
 import type { Client, ClientProfile } from '../../lib/types'
@@ -76,7 +76,7 @@ export function ClientsPage() {
     if (!form.name?.trim()) return toast('Client name is required.', 'error')
     setSaving(true)
     try {
-      const saved = editing === 'new' ? await api.clients.create(form) : await api.clients.update((editing as Client).id, form)
+      const saved = editing === 'new' ? await api.clients.create(form) : await api.clients.update((editing as Client).id, form, form.status === 'archived' && (editing as Client).status !== 'archived' ? deletionPin() : undefined)
       setClients((current) => editing === 'new' ? [saved, ...current] : current.map((client) => client.id === saved.id ? { ...client, ...saved } : client))
       toast(editing === 'new' ? 'Client added to the workspace.' : 'Client details updated.', 'success')
       setEditing(null)
@@ -84,11 +84,11 @@ export function ClientsPage() {
     finally { setSaving(false) }
   }
 
-  const remove = async () => {
+  const remove = async (pin: string) => {
     if (!deleting) return
     setDeletingBusy(true)
     try {
-      await api.clients.remove(deleting.id)
+      await api.clients.remove(deleting.id, pin)
       setClients((current) => current.map((client) => client.id === deleting.id ? { ...client, status: 'archived' } : client))
       toast('Client archived.', 'success')
       setDeleting(null)
@@ -126,6 +126,7 @@ export function ClientsPage() {
           {profile.client.notes && <section className="agreement-section"><h3>Internal notes</h3><p className="preserve-lines">{profile.client.notes}</p></section>}
           <section className="agreement-section"><h3>Project totals</h3>{profileTotals.length ? <div className="client-profile-summary">{profileTotals.map(([currency, totals]) => <article key={currency}><strong>{currency}</strong><dl><div><dt>Total project amount</dt><dd>{formatCurrency(totals.total, currency)}</dd></div><div><dt>Paid</dt><dd>{formatCurrency(totals.paid, currency)}</dd></div><div><dt>Balance</dt><dd>{formatCurrency(totals.balance, currency)}</dd></div></dl></article>)}</div> : <p>No active invoices yet.</p>}<p className="field-hint">Totals exclude void invoices. Renewals are listed separately below.</p></section>
           <section className="agreement-section"><h3>Invoices ({profile.invoices.length})</h3><div className="client-document-list">{profile.invoices.map(invoice => <article className="client-document-card" key={invoice.id}><header><div><strong>{invoice.project_title || 'Project invoice'}</strong><small>{invoice.reference}</small></div><StatusPill status={invoice.status} /></header><dl className="document-summary"><div><dt>Total project amount</dt><dd>{formatCurrency(Number(invoice.amount), invoice.currency)}</dd></div><div><dt>Paid</dt><dd>{formatCurrency(Number(invoice.paid_amount || 0), invoice.currency)}</dd></div><div><dt>Balance</dt><dd>{formatCurrency(Math.max(0, Number(invoice.amount) - Number(invoice.paid_amount || 0)), invoice.currency)}</dd></div><div><dt>Due</dt><dd>{formatDate(invoice.due_date)}</dd></div>{Number(invoice.renewal_amount) > 0 && <><div><dt>Annual renewal</dt><dd>{formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || invoice.currency)}</dd></div><div><dt>Renewal date</dt><dd>{formatDate(invoice.renewal_due_date)}</dd></div></>}</dl><Link className="text-link" to={`/admin/invoices?client=${encodeURIComponent(String(profile.client.id))}&invoice=${encodeURIComponent(String(invoice.id))}`}>Open invoice</Link></article>)}</div>{!profile.invoices.length && <p>No invoices yet. Create the first invoice for this client above.</p>}</section>
+          <section className="agreement-section"><h3>Payment history</h3><div className="client-document-list">{profile.invoices.flatMap(invoice => (invoice.payment_records || []).map(payment => <article key={payment.id} className="client-document-card"><header><div><strong>{formatCurrency(Number(payment.amount), payment.currency)}</strong><small>{invoice.reference} ? {invoice.project_title}</small></div><span>{formatDate(payment.paid_at)}</span></header><p>{payment.method || 'Payment'} ? {payment.reference || 'No transfer reference'}{invoice.status === 'void' ? ' ? Invoice voided; payment retained' : ''}</p></article>))}</div>{!profile.invoices.some(invoice => invoice.payment_records?.length) && <p>No cleared payment records yet.</p>}</section>
           <section className="agreement-section"><h3>Agreements ({profile.agreements.length})</h3><div className="client-document-list">{profile.agreements.map(agreement => <article className="client-document-card" key={agreement.id}><header><div><strong>{agreement.project_title || agreement.title}</strong><small>{agreement.reference || agreement.title}</small></div><StatusPill status={agreement.status} /></header><dl className="document-summary"><div><dt>Project amount</dt><dd>{agreement.amount != null ? formatCurrency(Number(agreement.amount), agreement.currency) : 'Not specified'}</dd></div><div><dt>Created</dt><dd>{formatDate(agreement.created_at)}</dd></div>{Number(agreement.renewal_amount) > 0 && <><div><dt>Annual renewal</dt><dd>{formatCurrency(Number(agreement.renewal_amount), agreement.renewal_currency || agreement.currency)}</dd></div><div><dt>Renewal date</dt><dd>{formatDate(agreement.renewal_due_date)}</dd></div></>}{agreement.signed_at && <><div><dt>Signed</dt><dd>{formatDate(agreement.signed_at)}</dd></div><div><dt>Signed by</dt><dd>{agreement.signer_name}{agreement.signer_job_role ? ` · ${agreement.signer_job_role}` : ''}</dd></div></>}</dl><Link className="text-link" to={`/admin/agreements?client=${encodeURIComponent(String(profile.client.id))}&search=${encodeURIComponent(agreement.reference || agreement.title)}`}>Open agreement</Link></article>)}</div>{!profile.agreements.length && <p>No agreements yet. Create an agreement using this client record above.</p>}</section>
         </div>}
       </Modal>

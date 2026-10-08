@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 
 from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
-from ..dependencies import Principal, current_admin
+from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..invoice_sharing import (
     InvoiceDocumentCreate,
     InvoiceDocumentUpdate,
@@ -29,6 +29,7 @@ from ..models import (
 )
 from ..security import client_ip, enforce_rate_limit
 from ..supabase_client import SupabaseGateway, get_supabase
+from ..income import COLOMBO
 
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -66,6 +67,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
                 "is_paid": is_paid,
                 "isPaid": is_paid,
                 "paid_at": paid_at,
+                "paid_amount": str(paid_for_phase),
             }
         )
     paid = sum((Decimal(str(item.get("amount") or 0)) for item in payment_records), Decimal())
@@ -75,7 +77,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         effective_status = "paid" if total > 0 and paid >= total else "partial" if paid > 0 else "sent"
     try:
         due_date = date.fromisoformat(str(record.get("due_date"))[:10]) if record.get("due_date") else None
-        if due_date and due_date < datetime.now(timezone.utc).date() and effective_status not in {"paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
+        if due_date and due_date < datetime.now(COLOMBO).date() and effective_status not in {"paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
             effective_status = "overdue"
     except ValueError:
         pass
@@ -142,6 +144,8 @@ def create_invoice(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    if payload.status == "void":
+        require_deletion_pin(request, settings, principal)
     record = json_ready(
         payload,
         exclude={"milestones", "payments", "amount", "reference", "client_name", "phone", "paid_amount"},
@@ -190,6 +194,16 @@ def update_invoice(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    needs_pin = payload.status == "void"
+    if payload.payments is not None:
+        current = _get(invoice_id, gateway)
+        by_id = {str(phase.id): phase for phase in payload.payments if phase.id}
+        for old in current.get("payments", []):
+            phase = by_id.get(str(old.get("id")))
+            if not phase or (old.get("is_paid") and (not (phase.is_paid or phase.isPaid) or Decimal(str(old["amount"])) != phase.amount)):
+                needs_pin = True
+    if needs_pin:
+        require_deletion_pin(request, settings, principal)
     changes = json_ready(
         payload, exclude_unset=True,
         exclude={"amount", "reference", "payments", "milestones", "client_name", "phone", "paid_amount", "expected_revision"},
@@ -342,7 +356,14 @@ def update_payment(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
+    if payload.amount is not None:
+        current = first(gateway.service.table("payments").select("amount").eq("id", str(payment_id)).eq("invoice_id", str(invoice_id)).limit(1).execute(), "Payment")
+        if payload.amount < Decimal(str(current["amount"])):
+            require_deletion_pin(request, settings, principal)
     changes = json_ready(payload, exclude_unset=True)
+    for key in {"milestone_id", "method", "reference", "notes"} & payload.model_fields_set:
+        if getattr(payload, key) is None:
+            changes[key] = None
     try:
         updated = first(
             gateway.service.table("payments").update(changes).eq("id", str(payment_id)).eq("invoice_id", str(invoice_id)).execute(),

@@ -30,6 +30,9 @@ def auth_client():
             assert token == session.refresh_token
             return SimpleNamespace(user=user, session=session)
     class Audit:
+        def select(self, _): return self
+        def eq(self, *_): return self
+        def limit(self, _): return self
         def insert(self, _): return self
         def execute(self): return SimpleNamespace(data=[])
     gateway = SimpleNamespace(auth_client=lambda: SimpleNamespace(auth=FakeAuth()), service=SimpleNamespace(table=lambda _: Audit()))
