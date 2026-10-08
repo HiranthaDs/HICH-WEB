@@ -1,0 +1,96 @@
+{
+  "review": [
+    {
+      "name": "portfolio",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Your next chapter.Built with Hich.",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 1764
+        }
+      ]
+    },
+    {
+      "name": "collection",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "E-commerce inspiration for your business",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 1764
+        }
+      ]
+    },
+    {
+      "name": "portfolio",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Your next chapter.Built with Hich.",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 720
+        },
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--two",
+          "right": 789.5
+        },
+        {
+          "tag": "DIV",
+          "className": "development-preview__orbit",
+          "right": 439.49893951416016
+        }
+      ]
+    },
+    {
+      "name": "collection",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "E-commerce inspiration for your business",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 720
+        },
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--two",
+          "right": 789.5
+        },
+        {
+          "tag": "DIV",
+          "className": "development-preview__orbit",
+          "right": 439.49893951416016
+        }
+      ]
+    }
+  ],
+  "functionalChecks": [
+    "Command palette keyboard shortcut and real filtered destination",
+    "Modal keyboard focus stays in the dialog",
+    "Typed signature submits name, role, explicit consent, signature, expected version",
+    "Invoice print retains logo and payment instructions",
+    "Interactive development model keyboard stages and reduced-motion support",
+    "No public admin navigation links",
+    "Logo asset loading",
+    "Desktop and mobile horizontal overflow",
+    "No browser JavaScript exceptions"
+  ],
+  "errors": []
+}

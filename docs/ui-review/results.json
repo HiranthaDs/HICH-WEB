@@ -1,0 +1,241 @@
+{
+  "review": [
+    {
+      "name": "portfolio",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Your next chapter.Built with Hich.",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 1764
+        }
+      ]
+    },
+    {
+      "name": "dashboard",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Good to see you.",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "agreements",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Agreements",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "invoices",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Invoices",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "work-library",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Completed projects",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "operations",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Operations",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "signing",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Website & Systems Development Agreement",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "client-invoice",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Ceylon Botanics Online Store",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "scope-approval",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "Add loyalty rewards and points",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "collection",
+      "device": "desktop",
+      "width": 1440,
+      "contentWidth": 1440,
+      "title": "E-commerce inspiration for your business",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 1764
+        }
+      ]
+    },
+    {
+      "name": "portfolio",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Your next chapter.Built with Hich.",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 720
+        },
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--two",
+          "right": 789.5
+        },
+        {
+          "tag": "DIV",
+          "className": "development-preview__orbit",
+          "right": 439.49893951416016
+        }
+      ]
+    },
+    {
+      "name": "dashboard",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Good to see you.",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "agreements",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Agreements",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "invoices",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Invoices",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "work-library",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Completed projects",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "operations",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Operations",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "signing",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Website & Systems Development Agreement",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "client-invoice",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Ceylon Botanics Online Store",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "scope-approval",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "Add loyalty rewards and points",
+      "logos": true,
+      "overflow": []
+    },
+    {
+      "name": "collection",
+      "device": "mobile",
+      "width": 390,
+      "contentWidth": 390,
+      "title": "E-commerce inspiration for your business",
+      "logos": true,
+      "overflow": [
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--one",
+          "right": 720
+        },
+        {
+          "tag": "DIV",
+          "className": "hero__glow hero__glow--two",
+          "right": 789.5
+        },
+        {
+          "tag": "DIV",
+          "className": "development-preview__orbit",
+          "right": 439.49893951416016
+        }
+      ]
+    }
+  ],
+  "functionalChecks": [
+    "Command palette keyboard shortcut and real filtered destination",
+    "Modal keyboard focus stays in the dialog",
+    "New invoice auto-allocates and submits two positive milestones matching the total",
+    "Typed signature submits name, role, explicit consent, signature, expected version",
+    "Invoice print retains logo and payment instructions",
+    "Interactive development model keyboard stages and reduced-motion support",
+    "No public admin navigation links",
+    "Logo asset loading",
+    "Desktop and mobile horizontal overflow",
+    "No browser JavaScript exceptions"
+  ],
+  "errors": []
+}

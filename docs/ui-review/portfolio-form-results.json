@@ -1,0 +1,12 @@
+{
+  "viewport": "390x844",
+  "checks": [
+    "slug normalized on blur",
+    "SVG converted to PNG with valid image bytes",
+    "invalid SVG rejected",
+    "PNG sent in multipart upload",
+    "create slug normalized",
+    "update slug normalized"
+  ],
+  "browserErrors": []
+}

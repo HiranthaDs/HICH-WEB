@@ -1,0 +1,32 @@
+{
+  "viewports": [
+    [
+      320,
+      640
+    ],
+    [
+      844,
+      390
+    ]
+  ],
+  "checks": [
+    "/admin/invoices dialog 320x640",
+    "/admin/agreements dialog 320x640",
+    "/admin/portfolio dialog 320x640",
+    "/admin/clients dialog 320x640",
+    "/admin/operations dialog 320x640",
+    "Full agreement 320x640",
+    "/admin/invoices dialog 844x390",
+    "/admin/agreements dialog 844x390",
+    "/admin/portfolio dialog 844x390",
+    "/admin/clients dialog 844x390",
+    "/admin/operations dialog 844x390",
+    "Full agreement 844x390",
+    "Invoice creates shared client; retry preserves client; project USD and renewal GBP persist",
+    "New client profile mobile",
+    "Agreement from new client mobile",
+    "Agreement reuses invoice client with complete contact details"
+  ],
+  "errors": [],
+  "interceptedWrites": 5
+}

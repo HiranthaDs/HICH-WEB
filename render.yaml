@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: hich-client-portal
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt && npm ci --prefix frontend && npm run build --prefix frontend
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health/ready
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
+      - key: NODE_VERSION
+        value: 22.21.0
+      - key: ENVIRONMENT
+        value: production
+      - key: APP_NAME
+        value: Hich Studio
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: TOKEN_HASH_PEPPER
+        generateValue: true
