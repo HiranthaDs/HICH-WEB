@@ -198,7 +198,9 @@ Render requires the process to listen on `0.0.0.0` and the injected `$PORT`. The
 1. Apply the Supabase migration and bootstrap the administrator first.
 2. Push the repository to a private GitHub, GitLab, or Bitbucket repository.
 3. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`.
-4. Review the single `hich-client-portal` web service.
+4. Review the single `hich-web` web service. The service name must stay aligned with
+   `PUBLIC_APP_URL`; a removed or renamed Render service returns `x-render-routing: no-server`
+   before the request ever reaches this application.
 5. Supply every variable marked `sync: false` in the Render dashboard:
    - `SUPABASE_SECRET_KEY`: the newly rotated secret key.
    - `PUBLIC_APP_URL`: initially `https://<service-name>.onrender.com`.

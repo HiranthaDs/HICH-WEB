@@ -107,6 +107,7 @@ class AgreementPaymentPhase(APIModel):
 
 
 class AgreementCreate(APIModel):
+    commercial_details_visible: bool = True
     source_invoice_id: UUID | None = None
     visiting_fee_lkr: Decimal = Field(default=0, ge=0, le=15000, decimal_places=2)
     payment_schedule: list[AgreementPaymentPhase] = Field(default_factory=list, max_length=100)
@@ -158,6 +159,7 @@ class AgreementCreate(APIModel):
 
 
 class AgreementUpdate(APIModel):
+    commercial_details_visible: bool | None = None
     source_invoice_id: UUID | None = None
     visiting_fee_lkr: Decimal | None = Field(default=None, ge=0, le=15000, decimal_places=2)
     payment_schedule: list[AgreementPaymentPhase] | None = Field(default=None, max_length=100)
@@ -207,6 +209,7 @@ class AgreementResponse(APIModel):
     content: str | None = None
     terms: str | list[str] | dict[str, Any]
     amount: Decimal | None = None
+    commercial_details_visible: bool = True
     currency: str
     status: AgreementStatus
     expires_at: datetime | None = None
@@ -241,6 +244,7 @@ class PublicAgreementResponse(APIModel):
     content: str | None = None
     terms: str | list[str] | dict[str, Any]
     amount: Decimal | None = None
+    commercial_details_visible: bool = True
     currency: str
     status: AgreementStatus
     expires_at: datetime | None = None

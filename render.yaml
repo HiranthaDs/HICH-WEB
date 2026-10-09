@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: hich-client-portal
+    name: hich-web
     runtime: python
     plan: free
     region: singapore

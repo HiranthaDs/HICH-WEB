@@ -50,15 +50,17 @@ def agreement_pdf(agreement: dict[str, Any], signature_bytes: bytes | None = Non
         Spacer(1, 8 * mm),
     ])
     client = agreement.get("clients") or {}
+    show_commercial = agreement.get("commercial_details_visible", True) is not False
     details = [
         ["Client", _text(agreement.get("client_name") or client.get("company") or client.get("name"))],
         ["Email", _text(agreement.get("client_email") or client.get("email"))],
         ["Phone", _text(agreement.get("client_phone") or client.get("phone"))],
         ["Project", _text(agreement.get("project_title"))],
-        ["Budget", f"{_text(agreement.get('currency') or 'LKR')} {_text(agreement.get('amount') if agreement.get('amount') is not None else 'Not specified')}"],
         ["Status", _text(str(agreement.get("status") or "draft").upper())],
     ]
-    if agreement.get("renewal_amount") is not None:
+    if show_commercial:
+        details.insert(-1, ["Budget", f"{_text(agreement.get('currency') or 'LKR')} {_text(agreement.get('amount') if agreement.get('amount') is not None else 'Not specified')}"])
+    if show_commercial and agreement.get("renewal_amount") is not None:
         details.extend([
             ["Annual renewal", f"{_text(agreement.get('renewal_currency') or 'LKR')} {_text(agreement.get('renewal_amount'))}"],
             ["Service expires / renews", _text(agreement.get("renewal_due_date") or "To be agreed")],

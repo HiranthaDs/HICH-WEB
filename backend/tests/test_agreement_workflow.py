@@ -38,7 +38,7 @@ def record(settings) -> dict:
         "status": "viewed", "client_id": str(uuid4()), "client_name": "Acme", "client_phone": "+94771234567",
         "client_email": "client@example.com", "title": "Development agreement", "project_title": "Storefront",
         "description": "Build the approved storefront and payment integration.", "terms": {"Visits": "Approved separately"},
-        "amount": "120000.00", "currency": "LKR", "expires_at": None,
+        "amount": "120000.00", "currency": "LKR", "commercial_details_visible": True, "expires_at": None,
         "clients": {"name": "CRM edited name", "email": "crm@example.com", "phone": "different phone"},
         "access_token_hash": hash_public_token(TOKEN, settings.token_hash_pepper.get_secret_value()),
     }
@@ -209,6 +209,32 @@ def test_hash_covers_client_contact_reference_price_and_terms(settings):
     for field, value in (("reference", "OTHER"), ("client_phone", "123456"), ("amount", "50.00"), ("terms", {"Scope": "Other"})):
         assert agreements._document_digest(row | {field: value}) != original
     assert agreements._document_digest(row | {"amount": 120000, "version": 99}) == original
+
+
+def test_scope_only_agreement_redacts_all_commercial_details(settings):
+    row = record(settings) | {
+        "commercial_details_visible": False,
+        "renewal_amount": "120.00",
+        "renewal_currency": "USD",
+        "renewal_due_date": "2027-10-09",
+        "visiting_fee_lkr": "5000.00",
+        "payment_schedule": [{"name": "Advance", "amount": "60000.00"}],
+        "payment_instructions": "Private bank details",
+        "project_due_date": "2026-11-01",
+    }
+
+    public = agreements._public_shape(row, settings)
+
+    assert public["commercial_details_visible"] is False
+    assert public["amount"] is None
+    assert public["renewal_amount"] is None
+    assert public["renewal_currency"] is None
+    assert public["renewal_due_date"] is None
+    assert public["visiting_fee_lkr"] is None
+    assert public["payment_schedule"] == []
+    assert public["payment_instructions"] is None
+    assert public["project_due_date"] is None
+    assert agreements._document_digest(row) != agreements._document_digest(row | {"commercial_details_visible": True})
 
 
 def test_sign_records_snapshot_role_consent_and_pdf_without_later_crm_changes(settings):

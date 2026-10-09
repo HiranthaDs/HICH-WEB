@@ -43,6 +43,7 @@ export interface ClientProfile {
 export type AgreementStatus = 'draft' | 'sent' | 'viewed' | 'signed' | 'expired' | 'void' | string
 
 export interface Agreement {
+  commercial_details_visible?: boolean
   source_invoice_id?: Id | null
   visiting_fee_lkr?: number
   payment_schedule?: Array<{ name: string; amount: number; is_paid?: boolean; paid_at?: string; received_amount?: number }>

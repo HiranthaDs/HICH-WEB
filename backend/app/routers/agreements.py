@@ -39,6 +39,7 @@ public_router = APIRouter(prefix="/public/agreements", tags=["public"])
 AGREEMENT_SELECT = "*,clients(name,company,email,phone),portfolio_projects(title)"
 AGREEMENT_REFERENCE_DIGITS = 12
 DOCUMENT_FIELDS = (
+    "commercial_details_visible",
     "reference", "client_id", "client_name", "client_email", "client_phone", "project_id",
     "title", "project_title", "description", "terms", "amount", "currency", "expires_at",
     "renewal_amount", "renewal_currency", "renewal_due_date",
@@ -145,6 +146,7 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
     client = record.get("clients") or {}
     project = record.get("portfolio_projects") or {}
     public_id = str(record.get("public_id") or record.get("id"))
+    show_commercial = record.get("commercial_details_visible", True) is not False
     return {
         "id": public_id,
         "public_id": public_id,
@@ -163,14 +165,15 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
         "description": record.get("description"),
         "content": record.get("description"),
         "terms": record.get("terms") or {},
-        "amount": record.get("amount"),
-        "renewal_amount": record.get("renewal_amount"),
-        "renewal_currency": record.get("renewal_currency"),
-        "renewal_due_date": record.get("renewal_due_date"),
-        "visiting_fee_lkr": record.get("visiting_fee_lkr"),
-        "payment_schedule": record.get("payment_schedule"),
-        "payment_instructions": record.get("payment_instructions"),
-        "project_due_date": record.get("project_due_date"),
+        "commercial_details_visible": show_commercial,
+        "amount": record.get("amount") if show_commercial else None,
+        "renewal_amount": record.get("renewal_amount") if show_commercial else None,
+        "renewal_currency": record.get("renewal_currency") if show_commercial else None,
+        "renewal_due_date": record.get("renewal_due_date") if show_commercial else None,
+        "visiting_fee_lkr": record.get("visiting_fee_lkr") if show_commercial else None,
+        "payment_schedule": record.get("payment_schedule") if show_commercial else [],
+        "payment_instructions": record.get("payment_instructions") if show_commercial else None,
+        "project_due_date": record.get("project_due_date") if show_commercial else None,
         "currency": record.get("currency") or "LKR",
         "created_at": record.get("created_at"),
         "sent_at": record.get("sent_at"),
@@ -385,7 +388,7 @@ def update_agreement(
             source = first(gateway.service.table("invoices").select("client_id,status").eq("id", changes["source_invoice_id"]).limit(1).execute(), "Invoice")
             if source["client_id"] != str(changes.get("client_id", current["client_id"])) or source["status"] == "void":
                 raise HTTPException(422, "The source invoice must belong to this client and remain active")
-        if changes.keys() & {"terms", "amount", "currency", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date"}:
+        if changes.keys() & {"terms", "amount", "currency", "commercial_details_visible", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date"}:
             changes["terms"] = scheduled_terms(current | changes)
         if "client_id" in changes:
             client = first(gateway.service.table("clients").select("name,company,email,phone").eq("id", changes["client_id"]).limit(1).execute(), "Client")

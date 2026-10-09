@@ -209,6 +209,8 @@ def test_visiting_fee_is_included_once_and_commercial_changes_affect_document_di
     assert agreements._document_digest(record) == agreements._document_digest(record | {"amount": 40000.0, "visiting_fee_lkr": 5000.0})
     cleared = scheduled_terms(record | {"visiting_fee_lkr": 0, "payment_schedule": [], "terms": terms})
     assert "Project-specific commercial schedule" not in cleared
+    scope_only = scheduled_terms(record | {"commercial_details_visible": False, "terms": terms})
+    assert "Project-specific commercial schedule" not in scope_only
 
 
 def test_new_agreements_explicitly_disclose_agreed_renewal_surcharge_before_signing():

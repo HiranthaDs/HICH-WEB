@@ -654,6 +654,7 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 .paid-toggle span { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 7px; color: transparent; }
 .paid-toggle input:checked + span { color: #fff; background: var(--green); border-color: var(--green); }
 .milestone-row > .icon-button { margin-bottom: 3px; }
+.milestone-row__calculation { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 11px; }
 .renewal-editor { display: grid; grid-template-columns: .65fr 1.35fr; align-items: center; gap: 25px; background: #fffaf2; border-color: #f0dfc2; }
 .renewal-editor .form-grid { grid-template-columns: 1fr .65fr 1fr; }
 

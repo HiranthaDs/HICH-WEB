@@ -83,11 +83,24 @@ export function renewalMessage(renewal: RenewalDetails, lateChargeAccepted = fal
 }
 
 export function agreementMessage(agreement: Agreement): ClientMessage {
+  const showCommercial = agreement.commercial_details_visible !== false
+  const schedule = showCommercial
+    ? (agreement.payment_schedule || []).map(phase => bullet(
+        phase.name,
+        `${money(phase.amount, agreement.currency)} — ${phase.is_paid ? 'Recorded as received' : 'Pending'}`,
+      )).join('\n')
+    : ''
+  const commercialSummary = showCommercial
+    ? `COMMERCIAL SUMMARY\nProject total: ${money(agreement.amount, agreement.currency)}${Number(agreement.visiting_fee_lkr) > 0 ? `\nVisiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')} (part of the project total and credited once to the final balance after collection)` : ''}${Number(agreement.renewal_amount) > 0 ? `\nAnnual renewal: ${money(agreement.renewal_amount, agreement.renewal_currency || agreement.currency)}${agreement.renewal_due_date ? `\nRenewal / service expiry date: ${formatDate(agreement.renewal_due_date)}` : ''}` : '\nAnnual renewal: Not included in this agreement'}${schedule ? `\n\nPAYMENT MILESTONES\n${schedule}` : ''}`
+    : 'This scope-only agreement intentionally excludes project prices, payment milestones, visiting fees and renewal figures. Those commercial details will be provided separately if applicable.'
   return { subject: `Hich Web | Agreement ready for review | ${agreement.project_title || agreement.title}`, body: [
     greeting(getClientName(agreement.client, agreement.client_name)),
     `Your agreement for ${agreement.project_title || 'your project'} is ready for your review and signature.`,
-    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}\nProject budget: ${money(agreement.amount, agreement.currency)}${Number(agreement.visiting_fee_lkr) > 0 ? `\nVisiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')} (credited to the final project balance once collected)` : ''}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
-    'Please review the scope, payment schedule, visiting-fee conditions, renewal terms and transfer conditions. If anything needs correction, reply before signing and we will update it.',
+    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
+    commercialSummary,
+    showCommercial
+      ? 'Please review the scope, total amount, payment milestones, any visiting fee, renewal details and the complete terms. If anything needs correction, reply before signing and we will update it.'
+      : 'Please review the complete scope and general terms. If anything needs correction, reply before signing and we will update it.',
     agreement.share_url ? `REVIEW & SIGN SECURELY\n${agreement.share_url}` : '',
     'Next step: Open the private link, confirm the details and sign as the authorised signatory. Please do not forward the link. You can retain a copy after signing.',
     closing,

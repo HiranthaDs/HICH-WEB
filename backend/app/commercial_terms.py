@@ -22,6 +22,12 @@ def validate_commercial_schedule(record: dict) -> None:
 def scheduled_terms(record: dict) -> object:
     validate_commercial_schedule(record)
     terms = record.get("terms") or {}
+    if record.get("commercial_details_visible", True) is False:
+        if isinstance(terms, dict):
+            return {key: value for key, value in terms.items() if key != SCHEDULE_HEADING}
+        if isinstance(terms, list):
+            return [item for item in terms if not str(item).startswith(SCHEDULE_HEADING + ": ")]
+        return str(terms).split("\n\n" + SCHEDULE_HEADING + ": ", 1)[0]
     fee = Decimal(str(record.get("visiting_fee_lkr") or 0))
     phases = record.get("payment_schedule") or []
     if not fee and not phases and not record.get("payment_instructions") and not record.get("project_due_date"):

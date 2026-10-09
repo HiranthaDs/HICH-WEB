@@ -114,17 +114,20 @@ export function AgreementSigning() {
   ]
   const visibleClauses = clauses.map((clause, index) => ({ ...clause, index })).filter(clause => !clauseQuery.trim() || `${clause.title} ${clause.body}`.toLowerCase().includes(clauseQuery.trim().toLowerCase()))
   const openFullAgreement = () => { setClauseQuery(''); setShowFullAgreement(true) }
+  const showCommercial = agreement.commercial_details_visible !== false
   const agreementDetails = <div className="agreement-meta">
     <div><span>Prepared for</span><strong>{clientName}</strong>{agreement.client_email && <small>{agreement.client_email}</small>}</div>
     <div><span>Client phone</span><strong>{agreement.client_phone || 'Not provided'}</strong></div>
-    <div><span>Project budget</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></div>
+    {showCommercial && <div><span>Project budget</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></div>}
     <div><span>Project</span><strong>{agreement.project_title || agreement.title}</strong></div>
     <div><span>Reference</span><strong>{agreement.reference || `#${agreement.id}`}</strong></div>
     <div><span>Valid until</span><strong>{formatDate(agreement.expires_at)}</strong></div>
   </div>
   const agreementValue = <>
-    <section className="agreement-value"><span>Agreed project value</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></section>
-    {Number(agreement.renewal_amount) > 0 && <section className="agreement-section"><h2>Annual renewal & service expiry</h2><p>Annual hosting, domain and maintenance renewal: <strong>{formatCurrency(agreement.renewal_amount, agreement.renewal_currency || 'LKR')}</strong>.</p><p>Service expiry / renewal due: <strong>{formatDate(agreement.renewal_due_date)}</strong>. Renewal is separate from the project development budget and is subject to the renewal terms in the full agreement.</p></section>}
+    {showCommercial ? <>
+      <section className="agreement-value"><span>Agreed project value</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></section>
+      {Number(agreement.renewal_amount) > 0 && <section className="agreement-section"><h2>Annual renewal & service expiry</h2><p>Annual hosting, domain and maintenance renewal: <strong>{formatCurrency(agreement.renewal_amount, agreement.renewal_currency || 'LKR')}</strong>.</p><p>Service expiry / renewal due: <strong>{formatDate(agreement.renewal_due_date)}</strong>. Renewal is separate from the project development budget and is subject to the renewal terms in the full agreement.</p></section>}
+    </> : <section className="agreement-section agreement-section--muted"><h2>Scope-only agreement</h2><p>This agreement does not include project prices, payment milestones, visiting fees or renewal figures. Any applicable commercial details are issued separately.</p></section>}
   </>
   const fullAgreementText = <>
     {agreement.description && !longDescription && <section className="agreement-section"><h2>Project overview</h2><p>{agreement.description}</p></section>}
