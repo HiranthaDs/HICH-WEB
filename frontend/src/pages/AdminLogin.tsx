@@ -11,7 +11,8 @@ export function AdminLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [signInBusy, setSignInBusy] = useState(false)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [error, setError] = useState('')
   const [recoveryMessage, setRecoveryMessage] = useState('')
   const { user, checking, login } = useAuth()
@@ -26,9 +27,10 @@ export function AdminLogin() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (signInBusy || recoveryBusy) return
     setError('')
     if (!email.trim() || !password) return setError('Enter your email and password.')
-    setLoading(true)
+    setSignInBusy(true)
     try {
       await login(email.trim(), password)
       toast('Welcome back to Hich.', 'success')
@@ -36,16 +38,17 @@ export function AdminLogin() {
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'The email or password is incorrect.')
     } finally {
-      setLoading(false)
+      setSignInBusy(false)
     }
   }
 
   const recover = async () => {
+    if (signInBusy || recoveryBusy) return
     if (!email.trim()) return setError('Enter your administrator email above, then request a reset link.')
-    setLoading(true); setError(''); setRecoveryMessage('')
+    setRecoveryBusy(true); setError(''); setRecoveryMessage('')
     try { setRecoveryMessage((await api.auth.recover(email.trim())).message) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not request a reset link.') }
-    finally { setLoading(false) }
+    finally { setRecoveryBusy(false) }
   }
 
   return (
@@ -78,8 +81,8 @@ export function AdminLogin() {
             <Input label="Password" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" autoComplete="current-password" />
             <button type="button" onClick={() => setShowPassword((shown) => !shown)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
           </div>
-          <Button className="login-submit" size="lg" loading={loading} type="submit">Sign in securely <ArrowRight size={18} /></Button>
-          <Button variant="ghost" type="button" loading={loading} onClick={() => void recover()}>Forgot password? Send reset link</Button>
+          <Button className="login-submit" size="lg" loading={signInBusy} disabled={recoveryBusy} type="submit">Sign in securely <ArrowRight size={18} /></Button>
+          <Button variant="ghost" type="button" loading={recoveryBusy} disabled={signInBusy} onClick={() => void recover()}>Forgot password? Send reset link</Button>
           <p className="login-security"><ShieldCheck size={15} /> Secure access to your Hich Web workspace.</p>
         </form>
         <small className="login-help">Need access? Contact your Hich Studio workspace owner.</small>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import secrets
 from io import BytesIO
 from datetime import datetime
 from decimal import Decimal
@@ -36,12 +37,19 @@ router = APIRouter(prefix="/agreements", tags=["agreements"])
 public_router = APIRouter(prefix="/public/agreements", tags=["public"])
 
 AGREEMENT_SELECT = "*,clients(name,company,email,phone),portfolio_projects(title)"
+AGREEMENT_REFERENCE_DIGITS = 12
 DOCUMENT_FIELDS = (
     "reference", "client_id", "client_name", "client_email", "client_phone", "project_id",
     "title", "project_title", "description", "terms", "amount", "currency", "expires_at",
     "renewal_amount", "renewal_currency", "renewal_due_date",
     "source_invoice_id", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date",
 )
+
+
+def _agreement_reference() -> str:
+    """Return a fixed-width, nonzero-leading numeric reference for display."""
+    floor = 10 ** (AGREEMENT_REFERENCE_DIGITS - 1)
+    return str(floor + secrets.randbelow(9 * floor))
 
 
 def _document_snapshot(record: dict[str, Any]) -> dict[str, Any]:
@@ -303,7 +311,7 @@ def create_agreement(
                 "client_name": payload.client_name or client.get("company") or client.get("name"),
                 "client_email": str(payload.client_email) if payload.client_email else client.get("email"),
                 "client_phone": payload.client_phone or client.get("phone"),
-                "reference": payload.reference or f"HICH-AGR-{utcnow():%Y}-{uuid4().hex[:8].upper()}",
+                "reference": payload.reference or _agreement_reference(),
                 "created_by": str(principal.id),
                 "public_id": str(uuid4()),
                 "access_token_hash": hash_public_token(token, settings.token_hash_pepper.get_secret_value()),

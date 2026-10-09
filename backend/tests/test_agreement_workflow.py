@@ -145,6 +145,20 @@ def test_default_template_is_complete_and_editable():
     assert AgreementCreate(client_name="Other").terms["Visit and travel fees"] != agreement.terms["Visit and travel fees"]
 
 
+def test_generated_agreement_reference_is_fixed_width_numeric_and_nonconstant(monkeypatch):
+    random_values = iter((0, 899_999_999_999))
+    monkeypatch.setattr(agreements.secrets, "randbelow", lambda upper: next(random_values))
+
+    first = agreements._agreement_reference()
+    second = agreements._agreement_reference()
+
+    assert first == "100000000000"
+    assert second == "999999999999"
+    assert first != second
+    assert all(len(reference) == 12 and reference.isdigit() and reference[0] != "0" for reference in (first, second))
+    assert AgreementCreate(client_name="Legacy", reference="HICH-AGR-001").reference == "HICH-AGR-001"
+
+
 @pytest.mark.parametrize("status", ["draft", "sent", "signed", "void"])
 def test_delete_removes_agreement_and_public_link_but_retains_evidence(settings, status):
     row = record(settings) | {"status": status, "signed_pdf_sha256": "a" * 64}

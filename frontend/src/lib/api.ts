@@ -46,6 +46,7 @@ export class ApiError extends Error {
 }
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown }
+const retryDelay = (milliseconds: number) => new Promise(resolve => window.setTimeout(resolve, milliseconds))
 
 export function deletionPin(): string {
   const pin = window.prompt('Enter the deletion PIN to confirm this action:')
@@ -78,7 +79,7 @@ function errorMessage(details: unknown, fallback: string) {
   return fallback
 }
 
-async function request<T>(path: string, options: RequestOptions = {}, retried = false): Promise<T> {
+async function request<T>(path: string, options: RequestOptions = {}, retried = false, transientAttempt = 0): Promise<T> {
   if (!retried && (options.method === 'DELETE' || path.endsWith('/void')) && !(options.headers as Record<string, string> | undefined)?.['X-Deletion-PIN']) {
     options = { ...options, headers: { ...options.headers, 'X-Deletion-PIN': deletionPin() } }
   }
@@ -88,19 +89,35 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
     : isForm
       ? options.body as FormData
       : JSON.stringify(options.body)
-  const response = await fetch(`${API_ROOT}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(isForm ? {} : options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
-    body,
-  })
+  const method = String(options.method || 'GET').toUpperCase()
+  let response: Response
+  try {
+    response = await fetch(`${API_ROOT}${path}`, {
+      ...options,
+      credentials: 'include',
+      cache: method === 'GET' ? 'no-store' : options.cache,
+      headers: {
+        Accept: 'application/json',
+        ...(isForm ? {} : options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...options.headers,
+      },
+      body,
+    })
+  } catch (error) {
+    if (method === 'GET' && transientAttempt === 0) {
+      await retryDelay(250)
+      return request<T>(path, options, retried, transientAttempt + 1)
+    }
+    throw new ApiError('The server could not be reached. Check the connection and try again.', 0, error)
+  }
 
   if (response.status === 401 && !retried && !path.startsWith('/public/') && !['/auth/login', '/auth/refresh', '/auth/recover', '/auth/reset-password'].includes(path)) {
-    if (await refreshSession()) return request<T>(path, options, true)
+    if (await refreshSession()) return request<T>(path, options, true, transientAttempt)
+  }
+
+  if (method === 'GET' && transientAttempt === 0 && [408, 500, 502, 503, 504].includes(response.status)) {
+    await retryDelay(250)
+    return request<T>(path, options, retried, transientAttempt + 1)
   }
 
   if (!response.ok) {
@@ -130,15 +147,21 @@ const unwrapList = <T>(payload: unknown, keys: string[]): Paginated<T> => {
   if (Array.isArray(source)) return { items: source as T[], total: source.length }
   if (source && typeof source === 'object') {
     const record = source as Record<string, unknown>
-    const items = (record.items || record.results || record.data || []) as T[]
+    if (!('items' in record) && !('results' in record) && !('data' in record)) {
+      throw new ApiError('The server returned an incomplete list. Refresh to try again.', 502, payload)
+    }
+    const items = record.items ?? record.results ?? record.data
+    if (!Array.isArray(items)) {
+      throw new ApiError('The server returned an invalid list. Refresh to try again.', 502, payload)
+    }
     return {
-      items: Array.isArray(items) ? items : [],
-      total: Number(record.total ?? (Array.isArray(items) ? items.length : 0)),
+      items: items as T[],
+      total: Number(record.total ?? items.length),
       page: record.page ? Number(record.page) : undefined,
       pages: record.pages ? Number(record.pages) : undefined,
     }
   }
-  return { items: [] }
+  throw new ApiError('The server returned an incomplete list. Refresh to try again.', 502, payload)
 }
 
 async function listAll<T>(path: string, keys: string[]): Promise<Paginated<T>> {

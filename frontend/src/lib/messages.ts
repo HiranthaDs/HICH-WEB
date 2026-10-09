@@ -5,67 +5,92 @@ export type ClientMessage = { subject: string; body: string }
 const greeting = (name?: string) => `Hello ${name || 'there'},`
 const closing = 'Thank you for choosing Hich Web.\nHich Web | Client Services'
 const money = (amount: unknown, currency?: string) => formatCurrency(Number(amount || 0), currency || 'LKR')
+const bullet = (label: string, value: string) => `• ${label}: ${value}`
 
 export function invoiceMessage(invoice: Invoice): ClientMessage {
   const paid = Number(invoice.paid_amount || 0), total = Number(invoice.amount || 0)
   const balance = Math.max(0, total - paid)
   if (invoice.invoice_kind === 'renewal') {
-    const services = (invoice.renewal_items || []).map(item => `• ${item.description}: ${money(item.amount, invoice.currency)}`).join('\n')
-    const receipts = (invoice.payment_records || []).map(receipt => `• ${receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at)}: ${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`).join('\n')
+    const services = (invoice.renewal_items || []).map(item => bullet(item.description, money(item.amount, invoice.currency))).join('\n')
+    const lateFee = Number(invoice.renewal_late_fee || 0)
+    const receipts = (invoice.payment_records || []).map(receipt => bullet(
+      receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at),
+      `${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`,
+    )).join('\n')
     return { subject: `Hich Web | ${invoice.reference || 'Renewal invoice'} | ${balance > 0 ? 'Domain & hosting renewal invoice' : 'Paid renewal invoice'}`, body: [
       greeting(getClientName(invoice.client, invoice.client_name)),
-      balance > 0 ? 'Your domain / hosting renewal invoice is ready.' : 'Thank you. We have received your renewal payment. Your paid domain / hosting renewal invoice is available below for your records.',
-      `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nServices: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nRenewal cycle / service expiry: ${formatDate(invoice.renewal_period_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
-      services ? `SERVICE CHARGES\n${services}${Number(invoice.renewal_late_fee) > 0 ? `\n• Agreed late-payment surcharge (18%, once): ${money(invoice.renewal_late_fee, invoice.currency)}` : ''}` : '',
-      receipts ? `PAYMENT RECEIVED\n${receipts}` : '',
+      balance > 0
+        ? 'Your domain / hosting renewal invoice is ready. Please review the summary below.'
+        : 'Thank you. We have received your renewal payment. Your paid domain / hosting renewal invoice is available below for your records.',
+      `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nService: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nRenewal cycle / service expiry: ${formatDate(invoice.renewal_period_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nRemaining balance: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
+      services || lateFee > 0 ? `SERVICE CHARGES\n${[services, lateFee > 0 ? bullet('Agreed late-payment surcharge (18%, once) — itemized late fee', money(lateFee, invoice.currency)) : ''].filter(Boolean).join('\n')}` : '',
+      receipts ? `PAYMENTS RECEIVED\n${receipts}` : '',
       balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
       invoice.share_url ? `VIEW ${balance > 0 ? 'RENEWAL' : 'PAID RENEWAL'} INVOICE\n${invoice.share_url}` : '',
-      balance > 0 ? 'Please use the renewal invoice reference when paying and send us your transfer receipt.' : 'This invoice confirms cleared payment. Service renewal is confirmed separately after the registrar or hosting provider completes it.',
-      invoice.customer_note || '', closing,
+      balance > 0
+        ? 'Next step: Please use the renewal invoice reference when paying, then reply with your transfer receipt so we can confirm the payment.'
+        : 'This invoice confirms cleared payment. Service renewal is confirmed separately after the registrar or hosting provider completes it.',
+      invoice.customer_note ? `NOTE\n${invoice.customer_note}` : '',
+      closing,
     ].filter(Boolean).join('\n\n') }
   }
-  const phases = (invoice.payments || []).map(p => `• ${p.name}: ${money(p.amount, invoice.currency)} — ${p.is_paid ?? p.isPaid ? 'Received' : Number(p.paid_amount) > 0 ? `Part received (${money(p.paid_amount, invoice.currency)})` : 'Pending'}${p.paid_at ? ` (${formatDate(p.paid_at)})` : ''}`).join('\n')
+  const phases = (invoice.payments || []).map(p => bullet(
+    p.name,
+    `${money(p.amount, invoice.currency)} — ${p.is_paid ?? p.isPaid ? 'Received' : Number(p.paid_amount) > 0 ? `Part received (${money(p.paid_amount, invoice.currency)})` : 'Pending'}${p.paid_at ? ` (${formatDate(p.paid_at)})` : ''}`,
+  )).join('\n')
   return { subject: `Hich Web | ${invoice.reference || 'Invoice'} | ${balance > 0 ? 'Payment update' : 'Payment complete'}`, body: [
     greeting(getClientName(invoice.client, invoice.client_name)),
-    `Your invoice for ${invoice.project_title || 'your project'} has been updated.`,
-    `INVOICE SUMMARY\nReference: ${invoice.reference || 'Project invoice'}\nProject total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nRemaining balance: ${money(balance, invoice.currency)}${invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
+    balance > 0
+      ? `Here is the latest payment update for ${invoice.project_title || 'your project'}.`
+      : `Your invoice for ${invoice.project_title || 'your project'} is now fully paid. Thank you for your payment.`,
+    `INVOICE SUMMARY\nReference: ${invoice.reference || 'Project invoice'}\nProject: ${invoice.project_title || 'Your project'}\nProject total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nRemaining balance: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
     phases ? `PAYMENT BREAKDOWN\n${phases}` : '',
-    invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
+    balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
     invoice.share_url ? `VIEW YOUR LATEST INVOICE\n${invoice.share_url}` : '',
-    balance > 0 ? 'Please use your invoice reference when making payment and send us the transfer receipt so we can confirm cleared funds. If you have already paid, please reply with the payment details.' : 'Your project invoice is fully paid. Thank you; we have recorded your payment.',
-    invoice.customer_note || '', closing,
+    balance > 0
+      ? 'Next step: Please use your invoice reference when paying, then reply with the transfer receipt so we can confirm cleared funds. If you have already paid, please send the payment details and we will update the record.'
+      : 'We have recorded the payment and no balance remains on this invoice.',
+    invoice.customer_note ? `NOTE\n${invoice.customer_note}` : '',
+    closing,
   ].filter(Boolean).join('\n\n') }
 }
 
-export type RenewalDetails = { client_name?: string; amount?: number; currency?: string; due_date?: string; project_title?: string; share_url?: string; payment_instructions?: string }
+export type RenewalDetails = { client_name?: string; reference?: string; amount?: number; currency?: string; due_date?: string; project_title?: string; share_url?: string; payment_instructions?: string }
 export function renewalMessage(renewal: RenewalDetails, lateChargeAccepted = false): ClientMessage {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' })
   const expired = Boolean(renewal.due_date && renewal.due_date.slice(0, 10) < today)
   const base = Number(renewal.amount || 0)
   const late = expired && lateChargeAccepted ? Math.round(base * 18) / 100 : 0
   const chargeText = lateChargeAccepted
-    ? expired ? `Agreed late-payment surcharge (18%, once): ${money(late, renewal.currency)}\nTotal renewal payment: ${money(base + late, renewal.currency)}` : `Under the accepted renewal terms, an 18% late-payment surcharge (${money(Math.round(base * 18) / 100, renewal.currency)}) will apply once to the unpaid renewal amount if payment is received after the due date.`
-    : 'If an 18% late-payment surcharge is included in your accepted renewal terms, it will apply once to the unpaid renewal amount after the due date. We will confirm and itemise any applicable charge before collection.'
-  return { subject: `Hich Web | ${expired ? 'Action required: service renewal overdue' : 'Upcoming domain & hosting renewal'}`, body: [
+    ? expired
+      ? `Agreed late-payment surcharge (18%, once) — itemized late fee: ${money(late, renewal.currency)}\nTotal renewal payment: ${money(base + late, renewal.currency)}`
+      : `No late fee is due today. Under the accepted renewal terms, an 18% late-payment surcharge (${money(Math.round(base * 18) / 100, renewal.currency)}) applies once to the unpaid renewal amount only if payment is received after the due date.`
+    : 'No late fee has been added to this reminder. If the accepted renewal terms include an 18% late-payment surcharge, we will confirm any applicable itemized late fee before collection.'
+  return { subject: `Hich Web | ${renewal.reference ? `${renewal.reference} | ` : ''}${expired ? 'Action required: service renewal overdue' : 'Upcoming domain & hosting renewal'}`, body: [
     greeting(renewal.client_name),
-    expired ? 'Our records show that your domain / hosting renewal payment is overdue. Please contact us promptly to confirm service availability and renewal options.' : 'Your domain / hosting renewal is approaching. Please arrange payment before the date below so we can process the renewal and help keep your services active.',
-    `RENEWAL DETAILS${renewal.project_title ? `\nProject: ${renewal.project_title}` : ''}\nRenewal amount: ${money(base, renewal.currency)}\nDue / service expiry date: ${formatDate(renewal.due_date)}`,
-    `LATE-PAYMENT TERMS\n${chargeText}\nAny VAT legally applicable to the service is shown separately on the invoice; a late-payment surcharge is not VAT.`,
+    expired
+      ? 'Our records show that your domain / hosting renewal payment is overdue. Please contact us promptly so we can confirm service availability and the available renewal options.'
+      : 'Your domain / hosting renewal is approaching. Please arrange payment by the date below so we can process it and help keep your services active.',
+    `RENEWAL DETAILS${renewal.reference ? `\nReference: ${renewal.reference}` : ''}${renewal.project_title ? `\nProject: ${renewal.project_title}` : ''}\nRenewal amount: ${money(base, renewal.currency)}\nDue / service expiry date: ${formatDate(renewal.due_date)}`,
+    `LATE-PAYMENT TERMS\n${chargeText}\nAny legally applicable VAT is shown separately on the invoice; a late-payment surcharge is not VAT.`,
     renewal.payment_instructions ? `PAYMENT DETAILS\n${renewal.payment_instructions}` : '',
     renewal.share_url ? `VIEW DETAILS\n${renewal.share_url}` : '',
-    'Please include your project or invoice reference and send the transfer receipt after payment. Renewal is confirmed only after cleared payment and provider confirmation. After expiry, provider suspension, redemption fees or domain loss may apply; any recovery cost will be quoted for approval.',
-    'If you have already renewed or wish to discuss the amount, please reply and we will check your record.', closing,
+    `Next step: Please include ${renewal.reference ? `reference ${renewal.reference}` : 'your project or invoice reference'} with the payment, then reply with the transfer receipt. Renewal is confirmed after cleared payment and provider confirmation.`,
+    expired ? 'After expiry, provider suspension, redemption fees or domain loss may apply. We will quote any recovery cost for approval before proceeding.' : '',
+    'If you have already renewed or would like to discuss the amount, please reply and we will check your record.',
+    closing,
   ].filter(Boolean).join('\n\n') }
 }
 
 export function agreementMessage(agreement: Agreement): ClientMessage {
   return { subject: `Hich Web | Agreement ready for review | ${agreement.project_title || agreement.title}`, body: [
-    greeting(agreement.client_name),
-    `Your agreement for ${agreement.project_title || 'your project'} is ready to review and sign.`,
-    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject budget: ${money(agreement.amount, agreement.currency)}${Number(agreement.visiting_fee_lkr) > 0 ? `\nVisiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')} (credited to the final project balance once collected)` : ''}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
-    'Please read the scope, payment schedule, visiting-fee conditions, renewal terms and transfer conditions carefully. Let us know if any detail needs correction before signing.',
+    greeting(getClientName(agreement.client, agreement.client_name)),
+    `Your agreement for ${agreement.project_title || 'your project'} is ready for your review and signature.`,
+    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}\nProject budget: ${money(agreement.amount, agreement.currency)}${Number(agreement.visiting_fee_lkr) > 0 ? `\nVisiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')} (credited to the final project balance once collected)` : ''}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
+    'Please review the scope, payment schedule, visiting-fee conditions, renewal terms and transfer conditions. If anything needs correction, reply before signing and we will update it.',
     agreement.share_url ? `REVIEW & SIGN SECURELY\n${agreement.share_url}` : '',
-    'The link is private; please share it only with the authorised signatory. You can retain a copy after signing.', closing,
+    'Next step: Open the private link, confirm the details and sign as the authorised signatory. Please do not forward the link. You can retain a copy after signing.',
+    closing,
   ].filter(Boolean).join('\n\n') }
 }
 
@@ -73,7 +98,7 @@ const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;'
 export function professionalEmail(subject: string, body: string): string {
   const sections = body.split(/\n\n+/).map(block => {
     const lines = block.split('\n')
-    const isHeading = /^[A-Z &/—-]{5,}$/.test(lines[0])
+    const isHeading = /^[A-Z0-9 &/—-]{4,}$/.test(lines[0])
     const content = lines.map((line, i) => {
       const safe = escape(line)
       if (isHeading && i === 0) return `<h2 style="font-size:12px;letter-spacing:1px;color:#5263ff;margin:0 0 12px">${safe}</h2>`

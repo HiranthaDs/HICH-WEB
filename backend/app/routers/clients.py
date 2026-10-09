@@ -40,7 +40,7 @@ def list_clients(
             while True:
                 batch = rows(
                     gateway.service.table("invoices")
-                    .select("id,client_id,project_value,currency,status,updated_at")
+                    .select("id,client_id,project_value,currency,status,invoice_kind,updated_at")
                     .in_("client_id", list(client_ids)).neq("status", "void").order("id")
                     .range(len(invoice_rows), len(invoice_rows) + 499).execute()
                 )
@@ -55,6 +55,13 @@ def list_clients(
             client_id = str(invoice.get("client_id") or "")
             if client_id not in client_ids:
                 continue
+            updated_at = str(invoice.get("updated_at") or "")
+            if updated_at > latest.get(client_id, ""):
+                latest[client_id] = updated_at
+            # A renewal bill is a separate financial document for an existing
+            # project, not another project or another copy of its lifetime value.
+            if (invoice.get("invoice_kind") or "project") != "project":
+                continue
             counts[client_id] += 1
             try:
                 value = Decimal(str(invoice.get("project_value") or 0))
@@ -64,9 +71,6 @@ def list_clients(
                     totals[client_id] += Decimal(str(invoice.get("project_value") or 0))
             except (InvalidOperation, TypeError, ValueError):
                 pass
-            updated_at = str(invoice.get("updated_at") or "")
-            if updated_at > latest.get(client_id, ""):
-                latest[client_id] = updated_at
         items = [
             item | {
                 "project_count": counts[str(item.get("id"))],

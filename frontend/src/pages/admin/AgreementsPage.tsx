@@ -108,7 +108,8 @@ export function AgreementsPage() {
     if (!form.title?.trim() || !form.client_name?.trim() || !form.client_phone?.trim() || !form.project_title?.trim() || !Number(form.amount)) return toast('Add the client name, phone, project name and budget.', 'error')
     setSaving(true)
     const payload: Partial<Agreement> = {
-      title: form.title, reference: form.reference?.trim() || undefined,
+      title: form.title,
+      ...(editing === 'new' ? {} : { reference: form.reference?.trim() || undefined }),
       client_id: form.client_id || undefined, client_name: form.client_name,
       client_phone: form.client_phone, client_email: form.client_email || undefined,
       project_title: form.project_title, amount: Number(form.amount), currency: form.currency,
@@ -202,7 +203,7 @@ export function AgreementsPage() {
         {prefillBusy && <p className="form-grid__full" role="status">Copying invoice details…</p>}{prefillError && <p className="form-grid__full negative" role="alert">{prefillError}</p>}
         <div className="form-grid__full"><SearchInput label="Search client records" placeholder="Search client name, company, email or phone…" value={clientQuery} onChange={setClientQuery} /></div>
         <Select className="form-grid__full" label="Client record" hint={loadingClients ? 'Refreshing client records…' : 'Clients created in invoices are available here. Select a client to fill their details.'} value={String(form.client_id || '')} onChange={event => { const client = clients.find(c => String(c.id) === event.target.value); setForm({ ...form, client_id: event.target.value, source_invoice_id: null, payment_schedule: [], client_name: client?.name || '', client_phone: client?.phone || '', client_email: client?.email || '' }) }}><option value="">New client - enter details below</option>{clients.filter(client => String(client.id) === String(form.client_id) || [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())).map(client => <option value={String(client.id)} key={client.id}>{client.company ? `${client.company} - ${client.name}` : client.name}</option>)}</Select>
-        <Input label="Agreement ID" value={form.reference || ''} onChange={event => setForm({ ...form, reference: event.target.value })} placeholder="Auto-generated, or HICH-AGR-001" optional />
+        <p className="form-grid__full generated-id-note">A secure, random 12-digit Agreement ID is generated automatically when you create the agreement.</p>
         <Input label="Client name" value={form.client_name || ''} onChange={event => setForm({ ...form, client_name: event.target.value })} required />
         <Input label="Client phone number" type="tel" value={form.client_phone || ''} onChange={event => setForm({ ...form, client_phone: event.target.value })} placeholder="+94 77 123 4567" required />
         <Input label="Client email" type="email" value={form.client_email || ''} onChange={event => setForm({ ...form, client_email: event.target.value })} optional />

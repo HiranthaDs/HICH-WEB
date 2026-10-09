@@ -68,6 +68,18 @@ fs.mkdirSync(output, { recursive: true });
       const handle = await page.evaluateHandle((text, scope) => [...document.querySelectorAll(`${scope} button, ${scope} a`)].find(e => e.textContent.trim() === text && e.getBoundingClientRect().height > 0), text, scope);
       assert.ok(handle.asElement(), `Missing button ${text}`); await handle.asElement().click(); await handle.dispose();
     };
+    const invoiceAction = async (reference, action) => {
+      const opened = await page.evaluate(reference => {
+        const row = [...document.querySelectorAll('.invoice-row')].find(element => element.textContent.includes(reference));
+        const button = row && [...row.querySelectorAll('.invoice-row__actions button')].find(element => element.textContent.trim() === 'Actions');
+        if (!button) return false;
+        button.click();
+        return true;
+      }, reference);
+      assert.ok(opened, `Missing Actions menu for ${reference}`);
+      await page.waitForSelector('.invoice-actions-menu');
+      await click(action, '.invoice-actions-menu');
+    };
     const field = async label => {
       const id = await page.evaluate(label => [...document.querySelectorAll('label.field')].find(e => e.querySelector('.field__label')?.firstChild?.textContent.trim() === label)?.querySelector('input,select,textarea')?.id, label);
       assert.ok(id, `Missing field ${label}`); return `[id="${id}"]`;
@@ -75,7 +87,15 @@ fs.mkdirSync(output, { recursive: true });
     const fill = async (label, value) => { const selector = await field(label); await page.$eval(selector, (e, value) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, value); e.dispatchEvent(new Event('input', { bubbles: true })); }, value); };
     const noOverflow = async label => { assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Overflow: ${label}`); };
 
-    await page.setViewport({ width: 1440, height: 1000 }); await go('/admin/invoices'); await click('Edit payments');
+    await page.setViewport({ width: 1440, height: 1000 }); await go('/admin/invoices');
+    const invoiceNavigation = await page.evaluate(() => ({
+      current: document.querySelector('.invoice-sections [aria-current="page"]')?.textContent.trim(),
+      completed: [...document.querySelectorAll('.invoice-sections button')].some(button => button.textContent.trim().startsWith('Completed')),
+      actions: [...document.querySelectorAll('.invoice-row__actions button')].filter(button => button.textContent.trim() === 'Actions').length,
+    }));
+    assert.ok(invoiceNavigation.current?.startsWith('Pending')); assert.equal(invoiceNavigation.completed, true); assert.equal(invoiceNavigation.actions, 1);
+    checks.push('Pending invoices are the default, Completed is separate, and each invoice has one Actions button');
+    await invoiceAction('INV-TEST', 'Edit payments');
     await click('Add visiting fee'); await click('Add mid payment'); await click('Record final payment'); await click('Save changes', '.modal');
     await page.waitForSelector('.share-panel textarea');
     const update = writes.find(w => w.method === 'PUT' && w.endpoint === '/invoices/invoice-1');
@@ -85,16 +105,17 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(update.data.payments.find(p => /Final/.test(p.name)).is_paid, true);
     const message = await page.$eval('.share-panel textarea', e => e.value);
     assert.ok(message.includes('PAYMENT BREAKDOWN') && message.includes('Remaining balance') && message.includes('Payments received'));
+    assert.ok(!(await page.$eval('.modal', element => element.textContent)).includes('Link expiry'));
     await click('Preview professional email layout', '.share-panel').catch(async () => page.click('.email-preview summary'));
     const iframe = await page.$('iframe[title="Professional email preview"]'); const frame = await iframe.contentFrame();
     assert.ok((await frame.$eval('body', e => e.textContent)).includes('HICH WEB'));
     await page.screenshot({ path: path.join(output, 'invoice-client-message.png') }); checks.push('Mid / final / visiting-fee allocation; balanced total; prepared payment message and HTML email');
 
-    await go('/admin/invoices'); await click('Add payment'); await page.waitForSelector('#receipt-form'); await page.select(await field('Payment milestone'), 'advance'); await fill('Payment amount (LKR)', '2000'); await fill('Transfer / receipt reference', 'TR-002'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
+    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Add payment'); await page.waitForSelector('#receipt-form'); await page.select(await field('Payment milestone'), 'advance'); await fill('Payment amount (LKR)', '2000'); await fill('Transfer / receipt reference', 'TR-002'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
     assert.equal(writes.find(w => w.endpoint === '/invoices/invoice-1/payments').data.amount, 2000);
     assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('Part received')); checks.push('Partial payment receipt retains amount, milestone and transfer reference');
 
-    await go('/admin/invoices'); await click('Create agreement'); await page.waitForFunction(() => document.querySelector('input[placeholder="Project or engagement name"]')?.value === 'Business website');
+    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Create agreement'); await page.waitForFunction(() => document.querySelector('input[placeholder="Project or engagement name"]')?.value === 'Business website');
     assert.equal(await page.$eval(await field('Client name'), e => e.value), client.name);
     assert.equal(await page.$eval(await field('Project budget'), e => e.value), '100000');
     assert.equal(await page.$eval(await field('Visiting fee (LKR)'), e => e.value), '5000');
@@ -117,7 +138,7 @@ fs.mkdirSync(output, { recursive: true });
     await go('/admin/agreements'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('AGR-NEW')); checks.push('Visible agreement delete accepts PIN and stays removed after reload, including signed agreements');
 
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); for (const route of ['/admin/invoices', '/admin/agreements', '/admin/settings', '/admin/income', '/admin/clients?client=client-1']) { await go(route); await noOverflow(`${route} ${width}`); } }
-    await go('/admin/invoices'); await page.click('button[aria-label="Delete invoice"]'); await fill('Deletion PIN', '1234'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
+    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Delete invoice'); await fill('Deletion PIN', '1234'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
     assert.equal(invoice.status, 'partial'); await fill('Deletion PIN', '2113'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => !document.querySelector('input[autocomplete="off"]')); assert.equal(invoice.status, 'void');
     await go('/admin/invoices'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('INV-TEST')); checks.push('Incorrect deletion PIN leaves data unchanged; correct PIN deletes and stays removed after reload');
     await go('/admin/income'); await page.screenshot({ path: path.join(output, 'income-mobile.png'), fullPage: true }); checks.push('Settings, agreement, invoice, client profile and income fit 320 / 390 px');

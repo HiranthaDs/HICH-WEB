@@ -1,6 +1,6 @@
 from copy import deepcopy
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -91,3 +91,31 @@ def test_client_totals_preserve_each_currency_and_paginate_all_invoices():
     assert result["project_count"] == 503
     assert result["totals_by_currency"] == {"USD": 626.25, "LKR": 100.0, "GBP": 42.5}
     assert result["total_value"] == 100.0
+
+
+def test_renewal_invoice_stays_in_profile_history_without_counting_as_another_project():
+    client_id = str(uuid4())
+    project = {
+        "id": str(uuid4()), "client_id": client_id, "invoice_kind": "project",
+        "project_value": "100000", "currency": "LKR", "status": "paid",
+        "updated_at": "2026-10-08T10:00:00Z", "payments": [],
+    }
+    renewal = {
+        "id": str(uuid4()), "client_id": client_id, "invoice_kind": "renewal",
+        "project_value": "12000", "currency": "LKR", "status": "paid",
+        "updated_at": "2026-10-09T10:00:00Z", "payments": [],
+    }
+    data = {
+        "clients": [{"id": client_id, "name": "Renewal Client"}],
+        "invoices": [project, renewal],
+        "agreements": [],
+    }
+
+    summary = list_clients(q=None, client_status=None, limit=100, offset=0, _=None, gateway=gateway(data))["clients"]["items"][0]
+    profile = get_client_profile(UUID(client_id), None, gateway(data))["profile"]
+
+    assert summary["project_count"] == 1
+    assert summary["total_value"] == 100000.0
+    assert summary["totals_by_currency"] == {"LKR": 100000.0}
+    assert summary["last_activity"] == renewal["updated_at"]
+    assert {invoice["invoice_kind"] for invoice in profile["invoices"]} == {"project", "renewal"}

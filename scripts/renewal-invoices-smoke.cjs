@@ -67,13 +67,33 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
       const handle = await page.evaluateHandle((text, scope) => [...document.querySelectorAll(`${scope} button, ${scope} a`)].find(e => e.textContent.trim() === text && e.getBoundingClientRect().height > 0), text, scope);
       assert.ok(handle.asElement(), `Missing button ${text}`); await handle.asElement().click(); await handle.dispose();
     };
+    const invoiceAction = async (reference, action) => {
+      const opened = await page.evaluate(reference => {
+        const row = [...document.querySelectorAll('.invoice-row')].find(element => element.textContent.includes(reference));
+        const button = row && [...row.querySelectorAll('.invoice-row__actions button')].find(element => element.textContent.trim() === 'Actions');
+        if (!button) return false;
+        button.click();
+        return true;
+      }, reference);
+      assert.ok(opened, `Missing Actions menu for ${reference}`);
+      await page.waitForSelector('.invoice-actions-menu');
+      await click(action, '.invoice-actions-menu');
+    };
     const field = async label => {
       const id = await page.evaluate(label => [...document.querySelectorAll('label.field')].find(e => e.querySelector('.field__label')?.firstChild?.textContent.trim() === label)?.querySelector('input,select,textarea')?.id, label);
       assert.ok(id, `Missing field ${label}`); return `[id="${id}"]`;
     };
     const fill = async (label, value) => { const selector = await field(label); await page.$eval(selector, (e, value) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, value); e.dispatchEvent(new Event('input', { bubbles: true })); }, value); };
     const noOverflow = async label => { await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth + 1, { timeout: 2000 }).catch(() => {}); const details = await page.evaluate(() => ({ ok: document.documentElement.scrollWidth <= innerWidth + 1, elements: [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({ tag: e.tagName, cls: e.className, text: e.textContent.slice(0, 65), right: e.getBoundingClientRect().right })).slice(-10) })); if (!details.ok) { await page.screenshot({ path: path.join(output, 'overflow-debug.png'), fullPage: true }); console.log(details); } assert.ok(details.ok, `Overflow: ${label}`); };
-    await page.setViewport({ width: 1440, height: 1000 }); await go('/admin/invoices'); await click('Edit payments');
+    await page.setViewport({ width: 1440, height: 1000 }); await go('/admin/invoices');
+    const invoiceNavigation = await page.evaluate(() => ({
+      current: document.querySelector('.invoice-sections [aria-current="page"]')?.textContent.trim(),
+      completed: [...document.querySelectorAll('.invoice-sections button')].some(button => button.textContent.trim().startsWith('Completed')),
+      actions: [...document.querySelectorAll('.invoice-row__actions button')].filter(button => button.textContent.trim() === 'Actions').length,
+    }));
+    assert.ok(invoiceNavigation.current?.startsWith('Pending')); assert.equal(invoiceNavigation.completed, true); assert.equal(invoiceNavigation.actions, 1);
+    checks.push('Pending invoices are the default, Completed is separate, and the source invoice has one Actions button');
+    await invoiceAction('INV-PROJECT', 'Edit payments');
     for (let i = 0; i < 4; i++) await click('Add phase');
     await click('Add mid payment');
     assert.equal(await page.$$eval('.milestone-row', rows => rows.length), 10);
@@ -83,7 +103,11 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     assert.equal(saved.data.payments.find(phase => phase.id === 'phase-1').paid_amount, 9000);
     checks.push('Ten phases save without increasing the agreed total or changing partial receipts; cent rounding and fully-paid rejection');
 
-    await go('/admin/invoices'); await click('Renewal invoice'); await page.waitForSelector('#renewal-invoice-form');
+    await go('/admin/invoices'); await invoiceAction('INV-PROJECT', 'Renewal invoice');
+    await page.waitForFunction(() => [...document.querySelectorAll('.modal h2')].some(heading => heading.textContent === 'Renewal invoice & client message'));
+    const reminder = await page.$eval('.modal', element => element.textContent);
+    assert.ok(reminder.includes('Renewal amount') && reminder.includes('12,000') && reminder.includes('Send message to client'));
+    await click('Create / open renewal invoice', '.modal'); await page.waitForSelector('#renewal-invoice-form');
     assert.equal(await page.$eval(await field('Billing currency'), e => e.value), 'LKR');
     await page.select(await field('Service 1'), 'domain'); await fill('Service amount 1', '4000'); await click('Add service'); await fill('Service amount 2', '8000');
     assert.equal(await page.$eval('.renewal-fee-options label:nth-child(2) input', e => e.disabled), true);
@@ -93,7 +117,7 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await fill('Payment amount (LKR)', '5000'); await fill('Transfer / receipt reference', 'RENEWAL-PARTIAL'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
     assert.equal(renewal.amount, 14160); assert.equal(renewal.status, 'partial');
     assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('9,160'));
-    await go('/admin/invoices'); await click('Add payment'); await page.waitForSelector('#receipt-form');
+    await go('/admin/invoices'); await invoiceAction('REN-TEST', 'Add payment'); await page.waitForSelector('#receipt-form');
     await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
     const message = await page.$eval('.share-panel textarea', e => e.value);
     assert.equal(renewal.status, 'paid'); assert.equal(renewal.payment_records.length, 2);
@@ -102,7 +126,17 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await page.screenshot({ path: path.join(output, 'paid-renewal-message.png'), fullPage: true });
     checks.push('Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message');
 
-    await go('/admin/invoices'); await click('Renewal invoice'); await page.waitForSelector('.share-panel textarea');
+    await go('/admin/invoices'); await page.click('.invoice-sections button:nth-child(2)');
+    await page.waitForFunction(() => document.querySelector('.invoice-sections [aria-current="page"]')?.textContent.trim().startsWith('Completed'));
+    assert.equal(await page.$$eval('.invoice-row', rows => rows.length), 1);
+    assert.ok((await page.$eval('.invoice-row', row => row.textContent)).includes('REN-TEST'));
+    assert.equal(await page.$$eval('.invoice-row__actions button', buttons => buttons.filter(button => button.textContent.trim() === 'Actions').length), 1);
+    await page.click('.invoice-sections button:nth-child(1)');
+    await page.waitForFunction(() => document.querySelector('.invoice-sections [aria-current="page"]')?.textContent.trim().startsWith('Pending'));
+    await invoiceAction('INV-PROJECT', 'Renewal invoice');
+    await page.waitForFunction(() => [...document.querySelectorAll('.modal h2')].some(heading => heading.textContent === 'Renewal invoice & client message'));
+    await click('Create / open renewal invoice', '.modal'); await page.waitForSelector('.share-panel textarea');
+    assert.ok(!(await page.$eval('.modal', element => element.textContent)).includes('Link expiry'));
     assert.equal(writes.filter(write => write.endpoint.endsWith('/renewal-invoice')).length, 1);
     checks.push('Opening the same renewal cycle reuses its paid invoice');
     await go('/invoice/renewal-test');

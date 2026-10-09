@@ -19,7 +19,7 @@ export function RenewalInvoiceForm({ source, onClose, onSaved }: { source: Invoi
   const [accepted, setAccepted] = useState(false)
   const [applyFee, setApplyFee] = useState(false)
   const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busyAction, setBusyAction] = useState<'share' | 'record' | null>(null)
   const expired = Boolean(source?.renewal_due_date && source.renewal_due_date.slice(0, 10) < today)
   useEffect(() => {
     if (!source) return
@@ -32,19 +32,20 @@ export function RenewalInvoiceForm({ source, onClose, onSaved }: { source: Invoi
   const fee = expired && accepted && applyFee ? Math.round(base * 18) / 100 : 0
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!source || busy) return
+    if (!source || busyAction) return
     if (!source.renewal_due_date) return toast('Save the service expiry / renewal date on the project invoice first.', 'error')
     if (!items.length || items.some(item => !item.description.trim() || item.amount <= 0)) return toast('Enter a description and positive amount for every renewal service.', 'error')
-    const recordPayment = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'record'
-    setBusy(true)
+    const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'record' ? 'record' : 'share'
+    const recordPayment = action === 'record'
+    setBusyAction(action)
     try {
       const invoice = await api.invoices.createRenewal(source.id, { renewal_period_date: source.renewal_due_date.slice(0, 10), items, currency, due_date: due, apply_late_fee: expired && accepted && applyFee, late_fee_accepted: accepted, customer_note: note })
       onClose(); onSaved(invoice, recordPayment && invoice.status !== 'paid')
       toast('Renewal invoice ready. An existing invoice is reused for this renewal cycle.', 'success')
     } catch (e) { toast(e instanceof Error ? e.message : 'Renewal invoice could not be prepared.', 'error') }
-    finally { setBusy(false) }
+    finally { setBusyAction(null) }
   }
-  return <Modal open={Boolean(source)} onClose={() => { if (!busy) onClose() }} title="Create domain & hosting renewal invoice" description="Bill this renewal separately. Record cleared payment to prepare the paid renewal invoice for your client." size="lg" footer={<><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button><Button variant="secondary" form="renewal-invoice-form" type="submit" value="share" loading={busy}>Create & share invoice</Button><Button form="renewal-invoice-form" type="submit" value="record" loading={busy}>Create & record payment</Button></>}>
+  return <Modal open={Boolean(source)} onClose={() => { if (!busyAction) onClose() }} title="Create domain & hosting renewal invoice" description="Bill this renewal separately. Record cleared payment to prepare the paid renewal invoice for your client." size="lg" footer={<><Button variant="ghost" disabled={Boolean(busyAction)} onClick={onClose}>Cancel</Button><Button variant="secondary" form="renewal-invoice-form" type="submit" value="share" disabled={Boolean(busyAction)} loading={busyAction === 'share'}>Create & share invoice</Button><Button form="renewal-invoice-form" type="submit" value="record" disabled={Boolean(busyAction)} loading={busyAction === 'record'}>Create & record payment</Button></>}>
     <form id="renewal-invoice-form" onSubmit={save}>
       <dl className="document-summary"><div><dt>Client</dt><dd>{source?.client_name}</dd></div><div><dt>Project</dt><dd>{source?.project_title}</dd></div><div><dt>Renewal cycle / service expiry</dt><dd>{formatDate(source?.renewal_due_date)}</dd></div></dl>
       <RenewalItemsEditor items={items} onChange={setItems} />
