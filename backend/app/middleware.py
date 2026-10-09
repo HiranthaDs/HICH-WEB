@@ -21,7 +21,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         private_document = request.url.path.startswith(("/api/", "/sign/", "/invoice/", "/change/", "/collection/"))
         response.headers["Referrer-Policy"] = "no-referrer" if private_document else "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Cache-Control"] = "no-store" if private_document else "private, no-cache"
+        if request.url.path.startswith("/assets/") and response.status_code < 400:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-store" if private_document else "private, no-cache"
         response.headers["X-Frame-Options"] = "DENY"
         return response
 

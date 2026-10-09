@@ -11,7 +11,7 @@ import type { Agreement, AgreementTemplate, Client, Invoice } from '../../lib/ty
 import { agreementMessage } from '../../lib/messages'
 
 type AgreementForm = Partial<Agreement> & { termsText?: string }
-const blankAgreement: AgreementForm = { title: 'Website & Systems Development Agreement', project_title: '', client_id: '', description: '', termsText: '', amount: 0, currency: 'LKR', commercial_details_visible: true, expires_at: '', status: 'draft' }
+const blankAgreement: AgreementForm = { title: 'Website & Systems Development Agreement', project_title: '', client_id: '', description: '', termsText: '', amount: null, currency: 'LKR', commercial_details_visible: true, expires_at: '', status: 'draft', renewal_amount: null, visiting_fee_lkr: 0 }
 
 const getClient = (agreement: Agreement, clients: Client[]) => clients.find((client) => String(client.id) === String(agreement.client_id)) || (typeof agreement.client === 'object' ? agreement.client : undefined)
 
@@ -105,19 +105,19 @@ export function AgreementsPage() {
     event.preventDefault()
     if (saving) return
     if (prefillBusy || prefillError) return toast('Finish copying the invoice details before saving.', 'error')
-    if (!form.title?.trim() || !form.client_name?.trim() || !form.client_phone?.trim() || !form.project_title?.trim() || !Number(form.amount)) return toast('Add the client name, phone, project name and budget.', 'error')
+    if (!form.title?.trim() || !form.client_name?.trim() || !form.client_phone?.trim() || !form.project_title?.trim()) return toast('Add the client name, phone number and project name.', 'error')
     setSaving(true)
     const payload: Partial<Agreement> = {
       title: form.title,
       ...(editing === 'new' ? {} : { reference: form.reference?.trim() || undefined }),
       client_id: form.client_id || undefined, client_name: form.client_name,
       client_phone: form.client_phone, client_email: form.client_email || undefined,
-      project_title: form.project_title, amount: Number(form.amount), currency: form.currency,
+      project_title: form.project_title, amount: Number(form.amount) > 0 ? Number(form.amount) : null, currency: form.currency,
       commercial_details_visible: form.commercial_details_visible !== false,
       description: form.description || undefined,
       terms: form.termsText === termsText(form.terms || template?.terms) ? (form.terms || template?.terms) : (form.termsText?.trim() || template?.terms),
       expected_version: editing === 'new' ? undefined : form.version,
-      renewal_amount: Number(form.renewal_amount || 0), renewal_currency: form.renewal_currency || 'LKR', renewal_due_date: form.renewal_due_date || '',
+      renewal_amount: Number(form.renewal_amount) > 0 ? Number(form.renewal_amount) : null, renewal_currency: form.renewal_currency || 'LKR', renewal_due_date: form.renewal_due_date || '',
       expires_at: form.expires_at ? new Date(`${form.expires_at.slice(0, 10)}T23:59:59+05:30`).toISOString() : '',
       source_invoice_id: form.source_invoice_id, visiting_fee_lkr: Number(form.visiting_fee_lkr || 0),
       payment_schedule: form.payment_schedule || [], payment_instructions: form.payment_instructions,
@@ -141,10 +141,10 @@ export function AgreementsPage() {
     finally { setSaving(false) }
   }
 
-  const share = async (agreement: Agreement) => {
+  const share = async (agreement: Agreement, rotate = false) => {
     setSharing(agreement.id)
     try {
-      const response = agreement.share_url && agreement.status !== 'draft' ? { share_url: agreement.share_url } : await api.agreements.share(agreement.id)
+      const response = await api.agreements.share(agreement.id, { rotate })
       const link = response.share_url || ('url' in response ? response.url : undefined) || ('token' in response && response.token ? `${window.location.origin}/sign/${response.token}` : undefined)
       if (!link) throw new Error('The server did not return a signing link.')
       const updated = { ...agreement, share_url: link, status: agreement.status === 'draft' ? 'sent' : agreement.status }
@@ -193,7 +193,7 @@ export function AgreementsPage() {
       return <article className="agreement-card" key={agreement.id}>
         <header><span className="agreement-card__icon"><FileCheck2 size={21} /></span><StatusPill status={agreement.status} /><Button variant="danger" size="sm" icon={Trash2} onClick={() => setDeleting(agreement)}>Delete</Button><div className="more-menu"><button className="icon-button" type="button" onClick={() => setMenu(menu === agreement.id ? null : agreement.id)} aria-label={`More actions for ${agreement.title}`}><MoreHorizontal size={18} /></button>{menu === agreement.id && <div className="more-menu__popover">{shareable && <button onClick={() => openEditor(agreement)}>Edit agreement</button>}{shareable && <button onClick={() => share(agreement)}><Copy size={15} /> Copy signing link</button>}<button onClick={() => duplicate(agreement)}><Copy size={15} /> Duplicate as new</button><button onClick={() => downloadPdf(agreement)}><Download size={15} /> Download PDF</button><button className="danger" onClick={() => { setDeleting(agreement); setMenu(null) }}><Trash2 size={15} /> Delete agreement</button></div>}</div></header>
         <div className="agreement-card__copy"><span>{agreement.reference || `AGR-${agreement.id}`}</span><h3>{agreement.title}</h3><p>{name} · {agreement.project_title || 'General engagement'}</p></div>
-        <dl><div><dt>Value</dt><dd>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')} {agreement.commercial_details_visible === false && <small>· hidden from client</small>}</dd></div><div><dt>Expires</dt><dd>{formatDate(agreement.expires_at)}</dd></div></dl>
+        <dl><div><dt>Value</dt><dd>{Number(agreement.amount) > 0 ? formatCurrency(Number(agreement.amount), agreement.currency || 'LKR') : 'Not included'} {agreement.commercial_details_visible === false && <small>· hidden from client</small>}</dd></div><div><dt>Expires</dt><dd>{formatDate(agreement.expires_at)}</dd></div></dl>
         <footer>{shareable ? <><Button variant="secondary" size="sm" icon={Link2} loading={sharing === agreement.id} onClick={() => share(agreement)}>{agreement.status === 'draft' ? 'Create link' : 'Copy link'}</Button>{client?.phone && <Button variant="ghost" size="sm" icon={MessageCircle} onClick={() => share(agreement)}>WhatsApp</Button>}{!client?.phone && agreement.status === 'draft' && <span className="agreement-card__hint"><Send size={14} /> Ready to share</span>}</> : <span className="agreement-card__hint"><FileCheck2 size={14} /> {agreement.status === 'signed' ? 'Completed and immutable' : 'No longer active'}</span>}</footer>
       </article>
     })}</div>}
@@ -212,20 +212,20 @@ export function AgreementsPage() {
         <Input label="Project title" value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder="Project or engagement name" required />
         <Select className="form-grid__full" label="Client-facing agreement details" value={form.commercial_details_visible === false ? 'scope' : 'full'} onChange={event => setForm({ ...form, commercial_details_visible: event.target.value === 'full' })} hint="Choose exactly what the client will see in the signing page, signed PDF and sharing message."><option value="full">Full commercial agreement — total, milestones, visiting fee and renewal</option><option value="scope">Scope-only agreement — hide all amounts and renewal details</option></Select>
         {form.commercial_details_visible === false && <p className="form-grid__full generated-id-note">The budget and renewal fields below remain available for your internal record, but they will not appear in the client link, signed PDF or client message.</p>}
-        <Input label="Project budget" type="number" min="0.01" step="0.01" required value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} />
+        <Input label="Project budget" type="number" min="0.01" step="0.01" value={form.amount ?? ''} onChange={(event) => setForm({ ...form, amount: event.target.value === '' ? null : Number(event.target.value) })} hint="Leave blank when the amount will be agreed in a separate quotation or invoice." optional />
         <Select label="Currency" value={form.currency || 'LKR'} onChange={(event) => setForm({ ...form, currency: event.target.value })}><option value="LKR">LKR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></Select>
-        <Input label="Visiting fee (LKR)" type="number" min="0" max="15000" step="0.01" value={form.visiting_fee_lkr || ''} onChange={event => setForm({ ...form, visiting_fee_lkr: Number(event.target.value) })} hint="Zero for no visit, otherwise LKR 5,000?15,000. Collected before the visit and credited once to the final balance." optional />
+        <Input label="Visiting fee (LKR)" type="number" min="5000" max="15000" step="0.01" value={form.visiting_fee_lkr || ''} onChange={event => setForm({ ...form, visiting_fee_lkr: Number(event.target.value) || 0 })} hint="Leave blank when no on-site visit applies. If used, enter LKR 5,000–15,000." optional />
         <Input label="Signing deadline" type="date" value={form.expires_at?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} optional />
         {Boolean(form.payment_schedule?.length) && <section className="form-grid__full agreement-section"><h3>Payment schedule from invoice</h3>{form.payment_schedule?.map((phase, index) => <p key={index}>{phase.name}: {formatCurrency(Number(phase.amount), form.currency)} ? {phase.is_paid ? 'Received' : 'Pending'}</p>)}<p>These amounts form part of the agreement. Record later payments through the invoice.</p></section>}
         <Textarea className="form-grid__full" label="Project scope and included deliverables" value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} placeholder="Describe the engagement, deliverables and intended outcome…" />
-        <Input label="Annual renewal amount" type="number" step="0.01" min="0" value={form.renewal_amount ?? ''} onChange={event => setForm({ ...form, renewal_amount: Number(event.target.value) })} placeholder="Hosting, domain and maintenance" optional />
+        <Input label="Annual renewal amount" type="number" step="0.01" min="0.01" value={form.renewal_amount ?? ''} onChange={event => setForm({ ...form, renewal_amount: event.target.value === '' ? null : Number(event.target.value) })} placeholder="Leave blank when no renewal applies" hint="Optional. Renewal clauses and figures are included only when renewal details are supplied." optional />
         <Select label="Renewal currency" value={form.renewal_currency || 'LKR'} onChange={event => setForm({ ...form, renewal_currency: event.target.value })}><option value="LKR">LKR - Sri Lankan rupee</option><option value="USD">USD - US dollar</option><option value="GBP">GBP - British pound</option></Select>
         <Input className="form-grid__full" label="Service expiry / renewal date" type="date" value={form.renewal_due_date?.slice(0, 10) || ''} onChange={event => setForm({ ...form, renewal_due_date: event.target.value })} hint="Hosting and domain expiry, separate from the signing deadline." optional />
-        <details className="form-grid__full clause-nav"><summary>Review or customise the general agreement</summary><Textarea label="Agreement terms" value={form.termsText || ''} onChange={(event) => setForm({ ...form, termsText: event.target.value })} rows={16} hint="The complete general terms are included automatically. Customise them for your accepted scope and fees." /></details>
+        <details className="form-grid__full clause-nav"><summary>Review or customise the comprehensive agreement terms</summary><Textarea label="Agreement terms" value={form.termsText || ''} onChange={(event) => setForm({ ...form, termsText: event.target.value })} rows={24} hint="A comprehensive 30+ clause agreement is included. When saved, project price, visiting, payment and renewal sections are automatically tailored to the details filled above; blank optional details are not presented as agreed charges." /></details>
         <p className="form-grid__full field-hint">{template?.review_note || 'Review the scope, fees and general terms before sharing. Obtain local legal review before using the template commercially.'}</p>
       </form>
     </Modal>
-    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title={shared?.commercial_details_visible === false ? 'Share scope-only agreement' : 'Share full commercial agreement'} description={shared?.commercial_details_visible === false ? 'This message and signing link omit all prices, payment milestones, visiting fees and renewal figures.' : 'This message and signing link include the project total and all recorded commercial details.'}>{shared?.share_url && <SharePanel url={shared.share_url} title={agreementMessage(shared).subject} phone={shared.client_phone} email={shared.client_email} message={agreementMessage(shared).body} />}</Modal>
+    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title={shared?.commercial_details_visible === false ? 'Share scope-only agreement' : 'Share full commercial agreement'} description={shared?.commercial_details_visible === false ? 'This message and signing link omit all prices, payment milestones, visiting fees and renewal figures.' : 'This message and signing link include only the commercial details filled in the agreement.'}>{shared?.share_url && <><SharePanel url={shared.share_url} title={agreementMessage(shared).subject} phone={shared.client_phone} email={shared.client_email} message={agreementMessage(shared).body} /><div className="document-toolbar"><Button variant="danger" loading={sharing === shared.id} onClick={() => void share(shared, true)}>Replace signing link</Button></div><p className="field-hint">Copying the link keeps it stable. Replace it only when the previous private link must stop working.</p></>}</Modal>
     <ConfirmDialog open={Boolean(deleting)} onClose={() => setDeleting(null)} onConfirm={remove} loading={deleteBusy} title={`Delete ${deleting?.title || 'agreement'}?`} description="Remove this agreement from the workspace and disable its public link." confirmLabel="Delete agreement" warning="Signed evidence and document history remain in the audit record." />
   </div>
 }

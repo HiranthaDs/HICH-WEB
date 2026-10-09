@@ -208,9 +208,39 @@ def test_visiting_fee_is_included_once_and_commercial_changes_affect_document_di
     assert agreements._document_digest(record) != agreements._document_digest(record | {"visiting_fee_lkr": "6000"})
     assert agreements._document_digest(record) == agreements._document_digest(record | {"amount": 40000.0, "visiting_fee_lkr": 5000.0})
     cleared = scheduled_terms(record | {"visiting_fee_lkr": 0, "payment_schedule": [], "terms": terms})
-    assert "Project-specific commercial schedule" not in cleared
+    assert "Project-specific commercial schedule" in cleared
+    assert "No project total" not in cleared["Project-specific commercial schedule"]
+    assert "32. Hich Web visiting fee and final-balance credit" not in cleared
+    assert "Visit and travel fees" not in cleared
     scope_only = scheduled_terms(record | {"commercial_details_visible": False, "terms": terms})
-    assert "Project-specific commercial schedule" not in scope_only
+    assert "scope-only agreement" in scope_only["Project-specific commercial schedule"]
+    assert "5,000" not in scope_only["Project-specific commercial schedule"]
+
+
+def test_optional_agreement_details_control_the_generated_long_terms():
+    base = {"amount": None, "currency": "LKR", "visiting_fee_lkr": 0, "terms": default_terms()}
+    minimal = scheduled_terms(base)
+    schedule = minimal["Project-specific commercial schedule"]
+    assert "No project total is stated" in schedule
+    assert "32. Hich Web visiting fee and final-balance credit" not in minimal
+    assert "34. Renewal deadlines and disclosed late charges" not in minimal
+    assert len(minimal) >= 30
+
+    detailed = scheduled_terms(base | {
+        "amount": 200000,
+        "visiting_fee_lkr": 5000,
+        "renewal_amount": 75,
+        "renewal_currency": "USD",
+        "renewal_due_date": "2027-10-09",
+        "payment_schedule": [{"name": "Advance", "amount": 200000}],
+        "terms": minimal,
+    })
+    detailed_schedule = detailed["Project-specific commercial schedule"]
+    assert "Project total: LKR 200,000.00" in detailed_schedule
+    assert "Visiting fee: LKR 5,000.00" in detailed_schedule
+    assert "annual renewal amount: USD 75.00" in detailed_schedule
+    assert "32. Hich Web visiting fee and final-balance credit" in detailed
+    assert "34. Renewal deadlines and disclosed late charges" in detailed
 
 
 def test_new_agreements_explicitly_disclose_agreed_renewal_surcharge_before_signing():
@@ -225,6 +255,11 @@ def test_invalid_fee_or_payment_allocation_is_rejected(patch):
     with pytest.raises(HTTPException) as exc:
         scheduled_terms({"amount": 10000, "currency": "LKR", "visiting_fee_lkr": 0} | patch)
     assert exc.value.status_code == 422
+
+
+def test_visiting_fee_is_allowed_when_project_budget_is_not_part_of_agreement():
+    terms = scheduled_terms({"amount": None, "currency": "LKR", "visiting_fee_lkr": 5000, "terms": default_terms()})
+    assert "Visiting fee: LKR 5,000.00" in terms["Project-specific commercial schedule"]
 
 
 def test_income_keeps_currency_separate_and_does_not_erase_retained_void_receipts():

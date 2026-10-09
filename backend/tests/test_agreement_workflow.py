@@ -4,7 +4,7 @@ import base64
 from copy import deepcopy
 from io import BytesIO
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -14,7 +14,7 @@ from starlette.requests import Request
 
 from app.agreement_template import CONSENT_TEXT, GENERAL_AGREEMENT, PROJECT_OVERVIEW, SECTIONS
 from app.config import Settings
-from app.models import AgreementCreate, AgreementUpdate, SignAgreementRequest
+from app.models import AgreementCreate, AgreementShareRequest, AgreementUpdate, SignAgreementRequest
 from app.pdf import agreement_pdf
 from app.routers import agreements
 from app.security import hash_public_token
@@ -191,16 +191,17 @@ def test_naive_expiry_is_rejected():
         AgreementUpdate(expires_at="2027-01-01T12:00:00")
 
 
-def test_phone_and_budget_required_before_sharing(settings):
+def test_phone_and_project_are_required_but_budget_is_optional_before_sharing(settings):
     row = record(settings)
+    row["amount"] = None
     agreements._ensure_shareable(row)
     row.pop("client_phone")
     row["clients"] = {}
-    row["amount"] = None
     with pytest.raises(HTTPException) as exc:
         agreements._ensure_shareable(row)
     assert exc.value.status_code == 422
-    assert "client_phone" in exc.value.detail and "amount" in exc.value.detail
+    assert "client_phone" in exc.value.detail
+    assert "amount" not in exc.value.detail
 
 
 def test_hash_covers_client_contact_reference_price_and_terms(settings):
@@ -221,6 +222,12 @@ def test_scope_only_agreement_redacts_all_commercial_details(settings):
         "payment_schedule": [{"name": "Advance", "amount": "60000.00"}],
         "payment_instructions": "Private bank details",
         "project_due_date": "2026-11-01",
+        "terms": {
+            "Scope": "Website",
+            "Visit and travel fees": "Specific visiting amount LKR 5,000",
+            "Renewal late-payment surcharge": "Specific renewal USD 120",
+            "Project-specific commercial schedule": "Project total LKR 120,000 and bank details",
+        },
     }
 
     public = agreements._public_shape(row, settings)
@@ -234,7 +241,22 @@ def test_scope_only_agreement_redacts_all_commercial_details(settings):
     assert public["payment_schedule"] == []
     assert public["payment_instructions"] is None
     assert public["project_due_date"] is None
+    assert "120,000" not in str(public["terms"])
+    assert "USD 120" not in str(public["terms"])
+    assert "bank details" not in str(public["terms"])
     assert agreements._document_digest(row) != agreements._document_digest(row | {"commercial_details_visible": True})
+
+
+def test_agreement_without_budget_can_be_signed_and_rendered(settings):
+    row = record(settings) | {"amount": None}
+    row["content_sha256"] = agreements._document_digest(row)
+    gateway = FakeGateway(row)
+
+    result = agreements.sign_agreement(TOKEN, signing_payload(row), request(), settings, gateway)["agreement"]
+
+    assert result["signed"] is True
+    assert gateway.row["signed_snapshot"]["amount"] is None
+    assert gateway.storage.uploaded[gateway.row["signed_pdf_storage_path"]].startswith(b"%PDF")
 
 
 def test_sign_records_snapshot_role_consent_and_pdf_without_later_crm_changes(settings):
@@ -266,6 +288,19 @@ def test_repeat_signing_rejected_without_new_files(settings):
         agreements.sign_agreement(TOKEN, payload, request(), settings, gateway)
     assert exc.value.status_code == 409
     assert gateway.storage.uploaded == uploaded
+
+
+def test_copying_agreement_link_is_stable_and_explicit_replacement_rotates_it(settings):
+    row = record(settings) | {"status": "sent", "share_nonce": None}
+    gateway = FakeGateway(row)
+    principal = SimpleNamespace(id=uuid4())
+
+    first = agreements.share_agreement(UUID(row["id"]), request(), None, principal, settings, gateway)["share"]
+    second = agreements.share_agreement(UUID(row["id"]), request(), None, principal, settings, gateway)["share"]
+    replacement = agreements.share_agreement(UUID(row["id"]), request(), AgreementShareRequest(rotate=True), principal, settings, gateway)["share"]
+
+    assert first["url"] == second["url"]
+    assert replacement["url"] != first["url"]
 
 
 @pytest.mark.parametrize("change", [{"version": 3}, {"content_sha256": "f" * 64}])

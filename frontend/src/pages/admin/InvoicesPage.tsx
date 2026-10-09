@@ -22,6 +22,7 @@ const blankClient: Partial<Client> = { name: '', company: '', email: '', phone: 
 
 const clientFor = (invoice: Invoice, clients: Client[]) => clients.find((client) => String(client.id) === String(invoice.client_id)) || (typeof invoice.client === 'object' ? invoice.client : undefined)
 const paymentPaid = (payment: Payment) => Boolean(payment.is_paid ?? payment.isPaid)
+const cents = (value: unknown) => Math.round(Number(value || 0) * 100)
 const sectionFor = (invoice: Invoice): InvoiceSection => invoice.status === 'paid' ? 'completed' : invoice.status === 'void' ? 'void' : 'pending'
 
 export function InvoicesPage() {
@@ -137,11 +138,37 @@ export function InvoicesPage() {
           ],
     }
   })
-  const allocated = form.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-  const paidInForm = form.payments.reduce((sum, payment) => sum + Number(paymentPaid(payment) ? payment.amount || 0 : payment.paid_amount || 0), 0)
-  const projectTotal = Number(form.amount || 0)
-  const allocationDifference = Number((projectTotal - allocated).toFixed(2))
-  const outstandingInForm = Math.max(0, Number((projectTotal - paidInForm).toFixed(2)))
+  const projectTotalCents = cents(form.amount)
+  const allocatedCents = form.payments.reduce((sum, payment) => sum + cents(payment.amount), 0)
+  const paidInFormCents = form.payments.reduce((sum, payment) => sum + (paymentPaid(payment) ? cents(payment.amount) : cents(payment.paid_amount)), 0)
+  const allocationDifferenceCents = projectTotalCents - allocatedCents
+  const projectTotal = projectTotalCents / 100
+  const allocated = allocatedCents / 100
+  const paidInForm = paidInFormCents / 100
+  const outstandingInForm = Math.max(0, projectTotalCents - paidInFormCents) / 100
+
+  const changeProjectCurrency = (currency: string) => {
+    if (currency !== 'LKR' && form.payments.some(payment => /visiting fee/i.test(payment.name))) {
+      toast('Remove the LKR visiting-fee milestone before changing the invoice currency.', 'error')
+      return
+    }
+    setForm({ ...form, currency })
+  }
+
+  const removePayment = (index: number) => {
+    const payment = form.payments[index]
+    const hasReceipt = form.payment_records?.some(receipt => String(receipt.milestone_id) === String(payment.id))
+    if (hasReceipt || Number(payment.paid_amount || 0) > 0) return toast('Delete or reassign this milestone’s recorded receipts before removing it.', 'error')
+    const payments = form.payments.filter((_, paymentIndex) => paymentIndex !== index).map(item => ({ ...item }))
+    if (/visiting fee/i.test(payment.name)) {
+      const target = payments.map((item, paymentIndex) => ({ item, paymentIndex })).reverse().find(({ item }) => /final|balance/i.test(item.name) && !paymentPaid(item))
+        || payments.map((item, paymentIndex) => ({ item, paymentIndex })).reverse().find(({ item }) => !paymentPaid(item))
+      if (target) target.item.amount = (cents(target.item.amount) + cents(payment.amount)) / 100
+      else payments.push({ name: 'Final balance', amount: cents(payment.amount) / 100, status: 'Pending', is_paid: false })
+    }
+    setPaymentPlanTouched(true)
+    setForm({ ...form, payments })
+  }
 
   const addPhase = (mid = false) => {
     try {
@@ -157,11 +184,12 @@ export function InvoicesPage() {
     if (form.currency !== 'LKR') return toast('Agree the LKR conversion rate before recording a visiting fee on a foreign-currency invoice.', 'error')
     if (visitFee < 5000 || visitFee > 15000) return toast('The visiting fee must be between LKR 5,000 and LKR 15,000.', 'error')
     if (form.payments.some(payment => /visiting fee/i.test(payment.name))) return toast('Edit the existing visiting fee phase instead of adding it twice.', 'error')
-    const index = form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => /final|balance/i.test(payment.name) && !paymentPaid(payment) && Number(payment.amount) - Number(payment.paid_amount || 0) >= visitFee)?.index
+    const feeCents = cents(visitFee)
+    const index = form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => /final|balance/i.test(payment.name) && !paymentPaid(payment) && cents(payment.amount) - cents(payment.paid_amount) >= feeCents)?.index
     if (index === undefined) return toast('The pending final balance must cover the visiting fee. Adjust the payment schedule first.', 'error')
     const payments = form.payments.map(payment => ({ ...payment }))
-    payments[index].amount = Number((Number(payments[index].amount) - visitFee).toFixed(2))
-    payments.splice(index, 0, { name: 'Visiting fee (credited to project balance)', amount: visitFee, is_paid: false, status: 'Pending' })
+    payments[index].amount = (cents(payments[index].amount) - feeCents) / 100
+    payments.splice(index, 0, { name: 'Visiting fee (credited to project balance)', amount: feeCents / 100, is_paid: false, status: 'Pending' })
     setPaymentPlanTouched(true); setForm({ ...form, payments })
     toast('Visiting fee included in the project total. Mark it paid only after receiving cleared funds.', 'success')
   }
@@ -175,8 +203,9 @@ export function InvoicesPage() {
     const payments = form.payments.filter((payment) => Number(payment.amount) > 0)
     if (payments.some((payment) => !payment.name.trim())) return toast('Enter a name for each payment milestone.', 'error')
     const normalizedPayments = payments.length ? payments : [{ name: 'Full project payment', amount: Number(form.amount), status: 'Pending', is_paid: false }]
-    const normalizedAllocated = normalizedPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)
-    if (Math.abs(normalizedAllocated - Number(form.amount)) > 0.01) return toast(`Payment milestones must add up to ${formatCurrency(Number(form.amount), form.currency || 'LKR')}. ${formatCurrency(Math.abs(Number(form.amount) - normalizedAllocated), form.currency || 'LKR')} is ${normalizedAllocated < Number(form.amount) ? 'still unallocated' : 'over-allocated'}.`, 'error')
+    const normalizedAllocatedCents = normalizedPayments.reduce((sum, payment) => sum + cents(payment.amount), 0)
+    if (normalizedAllocatedCents !== cents(form.amount)) return toast(`Payment milestones must add up exactly to ${formatCurrency(Number(form.amount), form.currency || 'LKR')}. ${formatCurrency(Math.abs(cents(form.amount) - normalizedAllocatedCents) / 100, form.currency || 'LKR')} is ${normalizedAllocatedCents < cents(form.amount) ? 'still unallocated' : 'over-allocated'}.`, 'error')
+    if (form.currency !== 'LKR' && normalizedPayments.some(payment => /visiting fee/i.test(payment.name))) return toast('An LKR visiting-fee milestone cannot be saved on a foreign-currency invoice.', 'error')
     setSaving(true)
     const paidAmount = normalizedPayments.filter(paymentPaid).reduce((sum, payment) => sum + Number(payment.amount), 0)
     let clientCreated = false
@@ -322,21 +351,24 @@ export function InvoicesPage() {
           <Input label="Project title" value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder="Website design & development" required />
           <Input label="Reference" value={form.reference || ''} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Generated if left blank" optional />
           <Input label={form.invoice_kind === 'renewal' ? 'Total renewal invoice amount' : 'Total project amount'} readOnly={form.invoice_kind === 'renewal'} type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => updateProjectValue(Number(event.target.value))} hint={form.invoice_kind === 'renewal' ? 'Calculated from the renewal service charges and any accepted surcharge.' : 'Start with 50/50, then add and adjust any number of instalments below.'} required />
-          <Select label="Project currency" value={form.currency || 'LKR'} onChange={(event) => setForm({ ...form, currency: event.target.value })}><option value="LKR">LKR — Sri Lankan rupee</option><option value="USD">USD — US dollar</option><option value="GBP">GBP — British pound</option>{form.currency && !['LKR', 'USD', 'GBP'].includes(form.currency) && <option value={form.currency}>{form.currency}</option>}</Select>
+          <Select label="Project currency" value={form.currency || 'LKR'} onChange={(event) => changeProjectCurrency(event.target.value)}><option value="LKR">LKR — Sri Lankan rupee</option><option value="USD">USD — US dollar</option><option value="GBP">GBP — British pound</option>{form.currency && !['LKR', 'USD', 'GBP'].includes(form.currency) && <option value={form.currency}>{form.currency}</option>}</Select>
           <Input label="Issue date" type="date" value={form.issue_date?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, issue_date: event.target.value })} />
           <Input label="Due date" type="date" value={form.due_date?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, due_date: event.target.value })} />
           <Select label="Invoice status" value={form.status || 'draft'} onChange={(event) => setForm({ ...form, status: event.target.value })} hint="Partial, paid and overdue states are calculated from payments and dates."><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial" disabled>Partially paid (automatic)</option><option value="paid" disabled>Paid (automatic)</option><option value="overdue" disabled>Overdue (automatic)</option><option value="void">Void (PIN required)</option></Select>
           <Input label="Payment method" value={form.payment_method || ''} onChange={(event) => setForm({ ...form, payment_method: event.target.value })} />
         </div>
 
-        <section className="milestone-editor">{form.invoice_kind !== 'renewal' && <div className="visiting-fee-editor"><Input label="Optional visiting fee (LKR)" type="number" min="5000" max="15000" step="0.01" value={visitFee || ''} onChange={event => setVisitFee(Number(event.target.value))} placeholder="Leave blank when no visit applies" hint="Only add this milestone when a visit and fee have been agreed." optional /><Button variant="secondary" size="sm" type="button" disabled={!visitFee} onClick={addVisitFee}>Add visiting fee</Button></div>}<div className="document-toolbar"><Button variant="secondary" size="sm" type="button" onClick={() => addPhase(true)}>Add mid payment</Button><Button variant="secondary" size="sm" type="button" onClick={() => { const index = form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => /final|balance/i.test(payment.name) && !paymentPaid(payment))?.index ?? form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => !paymentPaid(payment))?.index; if (index === undefined) return toast('No pending final payment.', 'error'); updatePayment(index, { is_paid: true, isPaid: true, paid_at: new Date().toISOString(), status: 'Paid' }) }}>Record final payment</Button></div>
+        <section className="milestone-editor">{form.invoice_kind !== 'renewal' && <div className="visiting-fee-editor"><Input label="Optional visiting fee (LKR)" type="number" min="5000" max="15000" step="0.01" value={visitFee || ''} onChange={event => setVisitFee(Number(event.target.value))} placeholder="Leave blank when no visit applies" hint="Only add this milestone when a visit and fee have been agreed." optional /><Button variant="secondary" size="sm" type="button" disabled={!visitFee} onClick={addVisitFee}>Add visiting fee</Button></div>}<div className="document-toolbar"><Button variant="secondary" size="sm" type="button" onClick={() => addPhase(true)}>Add mid payment</Button><Button variant="secondary" size="sm" type="button" onClick={() => { const index = form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => /final|balance/i.test(payment.name) && !paymentPaid(payment))?.index ?? form.payments.map((payment, index) => ({ payment, index })).reverse().find(({ payment }) => !paymentPaid(payment))?.index; if (index === undefined) return toast('No pending final payment.', 'error'); const payment = form.payments[index]; const hasRecordedReceipt = Number(payment.paid_amount || 0) > 0 || form.payment_records?.some(receipt => String(receipt.milestone_id) === String(payment.id)); if (hasRecordedReceipt) return toast('This milestone already has a receipt. Record its remaining balance with Add payment.', 'error'); updatePayment(index, { is_paid: true, isPaid: true, paid_at: new Date().toISOString(), status: 'Paid' }) }}>Record final payment</Button></div>
           <header><div><p className="eyebrow">Payment plan</p><h3>Milestones</h3><p>Add as many payment phases as needed (up to 100). New phases split the unpaid balance; edit their names and amounts to match your agreement. Use Add payment for partial receipts.</p></div><Button variant="secondary" size="sm" icon={Plus} type="button" onClick={() => addPhase()}>Add phase</Button></header>
-          <div className="milestone-summary" aria-live="polite"><span>Project total <strong>{formatCurrency(projectTotal, form.currency || 'LKR')}</strong></span><span>Allocated <strong className={Math.abs(allocationDifference) <= 0.01 ? 'positive' : allocationDifference < 0 ? 'negative' : ''}>{formatCurrency(allocated, form.currency || 'LKR')}</strong></span><span>{allocationDifference < 0 ? 'Over allocated' : 'Still to allocate'} <strong className={allocationDifference < 0 ? 'negative' : ''}>{formatCurrency(Math.abs(allocationDifference), form.currency || 'LKR')}</strong></span><span>Paid <strong>{formatCurrency(paidInForm, form.currency || 'LKR')}</strong></span><span>Outstanding <strong>{formatCurrency(outstandingInForm, form.currency || 'LKR')}</strong></span></div>
+          <div className="milestone-summary" aria-live="polite"><span>Project total <strong>{formatCurrency(projectTotal, form.currency || 'LKR')}</strong></span><span>Allocated <strong className={allocationDifferenceCents === 0 ? 'positive' : allocationDifferenceCents < 0 ? 'negative' : ''}>{formatCurrency(allocated, form.currency || 'LKR')}</strong></span><span>{allocationDifferenceCents === 0 ? 'Fully allocated' : allocationDifferenceCents < 0 ? 'Over allocated' : 'Still to allocate'} <strong className={allocationDifferenceCents < 0 ? 'negative' : allocationDifferenceCents === 0 ? 'positive' : ''}>{formatCurrency(Math.abs(allocationDifferenceCents) / 100, form.currency || 'LKR')}</strong></span><span>Paid <strong>{formatCurrency(paidInForm, form.currency || 'LKR')}</strong></span><span>Outstanding <strong>{formatCurrency(outstandingInForm, form.currency || 'LKR')}</strong></span></div>
           <div className="milestone-list">{form.payments.map((payment, index) => {
             const amount = Number(payment.amount || 0)
             const percentage = projectTotal > 0 ? amount / projectTotal * 100 : 0
-            const allocatedThroughPhase = form.payments.slice(0, index + 1).reduce((sum, phase) => sum + Number(phase.amount || 0), 0)
-            return <div className="milestone-row" key={payment.id || index}><Input label="Phase" value={payment.name} onChange={(event) => updatePayment(index, { name: event.target.value })} /><Input label="Amount" type="number" min="0" step="0.01" value={payment.amount || ''} onChange={(event) => updatePayment(index, { amount: Number(event.target.value) })} /><Input label="Payment date" type="date" disabled={!paymentPaid(payment)} value={payment.paid_at?.slice(0, 10) || ''} onChange={event => updatePayment(index, { paid_at: event.target.value ? new Date(`${event.target.value}T12:00:00+05:30`).toISOString() : undefined })} /><label className="paid-toggle"><input type="checkbox" checked={paymentPaid(payment)} onChange={(event) => updatePayment(index, { is_paid: event.target.checked, isPaid: event.target.checked, paid_at: event.target.checked ? (payment.paid_at || new Date().toISOString()) : undefined, status: event.target.checked && (!payment.status || payment.status === 'Pending') ? `Paid ${new Date().toISOString().slice(0, 10)}` : payment.status })} /><span><Check size={13} /></span>Paid</label><button type="button" className="icon-button icon-button--danger" onClick={() => { setPaymentPlanTouched(true); setForm({ ...form, payments: form.payments.filter((_, paymentIndex) => paymentIndex !== index) }) }} aria-label={`Remove ${payment.name}`}><Trash2 size={17} /></button><div className="milestone-row__calculation"><span>{percentage.toFixed(1)}% of project total</span><span>{formatCurrency(Math.max(0, projectTotal - allocatedThroughPhase), form.currency || 'LKR')} remaining after this milestone</span></div></div>
+            const allocatedThroughPhaseCents = form.payments.slice(0, index + 1).reduce((sum, phase) => sum + cents(phase.amount), 0)
+            const hasReceipt = Boolean(form.payment_records?.some(receipt => String(receipt.milestone_id) === String(payment.id)))
+            const hasExternalReceipt = Boolean(form.payment_records?.some(receipt => String(receipt.milestone_id) === String(payment.id) && receipt.reference !== 'Invoice phase payment'))
+            const received = Number(payment.paid_amount || 0)
+            return <div className="milestone-row" key={payment.id || index}><Input label="Phase" value={payment.name} onChange={(event) => updatePayment(index, { name: event.target.value })} /><Input label="Amount" type="number" min={received || 0} step="0.01" value={payment.amount || ''} onChange={(event) => updatePayment(index, { amount: Number(event.target.value) })} hint={received > 0 ? `Cannot be lower than ${formatCurrency(received, form.currency || 'LKR')} already received.` : undefined} /><Input label="Payment date" type="date" disabled={!paymentPaid(payment)} value={payment.paid_at?.slice(0, 10) || ''} onChange={event => updatePayment(index, { paid_at: event.target.value ? new Date(`${event.target.value}T12:00:00+05:30`).toISOString() : undefined })} /><label className="paid-toggle" title={hasExternalReceipt ? 'Manage this payment through recorded receipts.' : undefined}><input type="checkbox" disabled={hasExternalReceipt} checked={paymentPaid(payment)} onChange={(event) => updatePayment(index, { is_paid: event.target.checked, isPaid: event.target.checked, paid_amount: event.target.checked ? payment.paid_amount : 0, paid_at: event.target.checked ? (payment.paid_at || new Date().toISOString()) : undefined, status: event.target.checked && (!payment.status || payment.status === 'Pending') ? `Paid ${new Date().toISOString().slice(0, 10)}` : event.target.checked ? payment.status : 'Pending' })} /><span><Check size={13} /></span>Paid</label><button type="button" className="icon-button icon-button--danger" disabled={hasReceipt || received > 0} title={hasReceipt || received > 0 ? 'Delete or reassign recorded receipts first.' : undefined} onClick={() => removePayment(index)} aria-label={`Remove ${payment.name}`}><Trash2 size={17} /></button><div className="milestone-row__calculation"><span>{percentage.toFixed(1)}% of project total{received > 0 ? ` · ${formatCurrency(received, form.currency || 'LKR')} received` : ''}</span><span>{formatCurrency(Math.max(0, projectTotalCents - allocatedThroughPhaseCents) / 100, form.currency || 'LKR')} remaining after this milestone</span></div></div>
           })}</div>
         </section>
 

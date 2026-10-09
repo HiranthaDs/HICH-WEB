@@ -118,15 +118,15 @@ export function AgreementSigning() {
   const agreementDetails = <div className="agreement-meta">
     <div><span>Prepared for</span><strong>{clientName}</strong>{agreement.client_email && <small>{agreement.client_email}</small>}</div>
     <div><span>Client phone</span><strong>{agreement.client_phone || 'Not provided'}</strong></div>
-    {showCommercial && <div><span>Project budget</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></div>}
+    {showCommercial && Number(agreement.amount) > 0 && <div><span>Project budget</span><strong>{formatCurrency(Number(agreement.amount), agreement.currency || 'LKR')}</strong></div>}
     <div><span>Project</span><strong>{agreement.project_title || agreement.title}</strong></div>
     <div><span>Reference</span><strong>{agreement.reference || `#${agreement.id}`}</strong></div>
     <div><span>Valid until</span><strong>{formatDate(agreement.expires_at)}</strong></div>
   </div>
   const agreementValue = <>
     {showCommercial ? <>
-      <section className="agreement-value"><span>Agreed project value</span><strong>{formatCurrency(agreement.amount || 0, agreement.currency || 'LKR')}</strong></section>
-      {Number(agreement.renewal_amount) > 0 && <section className="agreement-section"><h2>Annual renewal & service expiry</h2><p>Annual hosting, domain and maintenance renewal: <strong>{formatCurrency(agreement.renewal_amount, agreement.renewal_currency || 'LKR')}</strong>.</p><p>Service expiry / renewal due: <strong>{formatDate(agreement.renewal_due_date)}</strong>. Renewal is separate from the project development budget and is subject to the renewal terms in the full agreement.</p></section>}
+      {Number(agreement.amount) > 0 ? <section className="agreement-value"><span>Agreed project value</span><strong>{formatCurrency(Number(agreement.amount), agreement.currency || 'LKR')}</strong></section> : <section className="agreement-section agreement-section--muted"><h2>Project price</h2><p>No overall project total is stated in this agreement. {Number(agreement.visiting_fee_lkr) > 0 || Boolean(agreement.payment_schedule?.length) || Number(agreement.renewal_amount) > 0 ? 'Only the individual charges listed in this agreement apply; any other charge requires separate written acceptance.' : 'Any charge must be provided and accepted separately in writing.'}</p></section>}
+      {(Number(agreement.renewal_amount) > 0 || agreement.renewal_due_date) && <section className="agreement-section"><h2>Annual renewal & service expiry</h2>{Number(agreement.renewal_amount) > 0 && <p>Annual hosting, domain and maintenance renewal: <strong>{formatCurrency(Number(agreement.renewal_amount), agreement.renewal_currency || 'LKR')}</strong>.</p>}{agreement.renewal_due_date && <p>Service expiry / renewal due: <strong>{formatDate(agreement.renewal_due_date)}</strong>. Renewal is separate from the project development budget and is subject to the renewal terms in the full agreement.</p>}</section>}
     </> : <section className="agreement-section agreement-section--muted"><h2>Scope-only agreement</h2><p>This agreement does not include project prices, payment milestones, visiting fees or renewal figures. Any applicable commercial details are issued separately.</p></section>}
   </>
   const fullAgreementText = <>
@@ -192,7 +192,7 @@ export function AgreementSigning() {
               </div>
               {mode === 'draw' ? <SignaturePad ref={signatureRef} onChange={setHasDrawing} /> : <div className="typed-signature"><Input label="Type your signature" value={typedSignature} onChange={(event) => setTypedSignature(event.target.value)} placeholder="Type your full name" /><div aria-hidden="true">{typedSignature || 'Your signature'}</div></div>}
               <Button variant="ghost" icon={FileText} onClick={openFullAgreement} aria-haspopup="dialog">Read the full agreement</Button>
-              <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span><i><Check size={13} /></i>{agreement.consent_text || 'I agree to the complete agreement, including the stated scope, budget and additional charges policy. I confirm that I am authorised to accept it and intend this electronic signature to record my acceptance.'}</span></label>
+              <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span><i><Check size={13} /></i>{agreement.consent_text || 'I agree to the complete agreement and the project details actually stated in it. I confirm that I am authorised to accept it and intend this electronic signature to record my acceptance.'}</span></label>
               <Button className="sign-submit" size="lg" icon={BadgeCheck} loading={submitting} onClick={submit}>Sign agreement</Button>
               <p className="sign-panel__security"><ShieldCheck size={15} /> Your signature and signing time are securely recorded.</p>
             </>}

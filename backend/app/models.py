@@ -231,6 +231,10 @@ class AgreementResponse(APIModel):
     share_url: str | None = None
 
 
+class AgreementShareRequest(APIModel):
+    rotate: bool = False
+
+
 class PublicClientSummary(APIModel):
     name: str
     company: str | None = None

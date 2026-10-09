@@ -1,5 +1,6 @@
 {
   "checks": [
+    "Pending invoices are the default, Completed is separate, and each invoice has one Actions button",
     "Mid / final / visiting-fee allocation; balanced total; prepared payment message and HTML email",
     "Partial payment receipt retains amount, milestone and transfer reference",
     "Invoice copies contact, budget, payments, renewal and fee into agreement; newest agreement first",

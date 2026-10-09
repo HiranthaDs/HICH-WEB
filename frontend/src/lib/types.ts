@@ -49,7 +49,7 @@ export interface Agreement {
   payment_schedule?: Array<{ name: string; amount: number; is_paid?: boolean; paid_at?: string; received_amount?: number }>
   payment_instructions?: string
   project_due_date?: string
-  renewal_amount?: number
+  renewal_amount?: number | null
   renewal_currency?: string
   renewal_due_date?: string
   id: Id
@@ -70,7 +70,7 @@ export interface Agreement {
   project_title?: string
   description?: string
   terms?: string | string[] | Record<string, unknown>
-  amount?: number
+  amount?: number | null
   currency?: string
   created_at?: string
   updated_at?: string

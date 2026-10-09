@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import hashlib
+import hmac
+import base64
 import secrets
 from io import BytesIO
 from datetime import datetime
@@ -19,7 +21,7 @@ from ..agreement_template import CONSENT_TEXT, template_payload
 from ..commercial_terms import scheduled_terms
 from ..data import audit, db_failure, first, rows
 from ..dependencies import Principal, current_admin, require_deletion_pin
-from ..models import AgreementCreate, AgreementUpdate, SignAgreementRequest, json_ready
+from ..models import AgreementCreate, AgreementShareRequest, AgreementUpdate, SignAgreementRequest, json_ready
 from ..pdf import agreement_pdf
 from ..security import (
     client_ip,
@@ -27,7 +29,6 @@ from ..security import (
     decode_image_data_url,
     enforce_rate_limit,
     hash_public_token,
-    new_public_token,
     utcnow,
 )
 from ..supabase_client import SupabaseGateway, get_supabase
@@ -81,8 +82,6 @@ def _document_digest(record: dict[str, Any]) -> str:
 def _ensure_shareable(record: dict[str, Any]) -> None:
     document = _document_snapshot(record)
     missing = [name for name in ("client_name", "client_phone", "project_title") if not document.get(name)]
-    if document.get("amount") is None:
-        missing.append("amount")
     if missing:
         raise HTTPException(status_code=422, detail=f"Complete these fields before sharing: {', '.join(missing)}")
     if record.get("expires_at"):
@@ -112,6 +111,13 @@ def _decode_signature(value: str, max_bytes: int) -> tuple[bytes, str, str]:
 
 def _share_url(settings: Settings, token: str) -> str:
     return f"{str(settings.public_app_url).rstrip('/')}/sign/{quote(token, safe='')}"
+
+
+def _agreement_token(public_id: str, nonce: str, settings: Settings) -> str:
+    """Recreate a stable bearer token without storing the token itself."""
+    key = settings.token_hash_pepper.get_secret_value() or settings.supabase_secret_key.get_secret_value()
+    digest = hmac.new(key.encode(), f"hich-agreement-v1:{public_id}:{nonce}".encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
 def _shape(record: dict[str, Any], settings: Settings, token: str | None = None) -> dict[str, Any]:
@@ -147,6 +153,9 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
     project = record.get("portfolio_projects") or {}
     public_id = str(record.get("public_id") or record.get("id"))
     show_commercial = record.get("commercial_details_visible", True) is not False
+    public_terms = record.get("terms") or {}
+    if not show_commercial:
+        public_terms = scheduled_terms(record | {"terms": public_terms, "commercial_details_visible": False}, validate=False)
     return {
         "id": public_id,
         "public_id": public_id,
@@ -164,7 +173,7 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
         "project_title": record.get("project_title") or project.get("title"),
         "description": record.get("description"),
         "content": record.get("description"),
-        "terms": record.get("terms") or {},
+        "terms": public_terms,
         "commercial_details_visible": show_commercial,
         "amount": record.get("amount") if show_commercial else None,
         "renewal_amount": record.get("renewal_amount") if show_commercial else None,
@@ -299,7 +308,9 @@ def create_agreement(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
-    token = new_public_token()
+    public_id = str(uuid4())
+    share_nonce = str(uuid4())
+    token = _agreement_token(public_id, share_nonce, settings)
     prepared_terms = scheduled_terms(json_ready(payload))
     try:
         client_id = _resolve_client(payload, principal, gateway)
@@ -316,7 +327,8 @@ def create_agreement(
                 "client_phone": payload.client_phone or client.get("phone"),
                 "reference": payload.reference or _agreement_reference(),
                 "created_by": str(principal.id),
-                "public_id": str(uuid4()),
+                "public_id": public_id,
+                "share_nonce": share_nonce,
                 "access_token_hash": hash_public_token(token, settings.token_hash_pepper.get_secret_value()),
                 "status": "sent" if payload.send_immediately else "draft",
                 "sent_at": utcnow().isoformat() if payload.send_immediately else None,
@@ -376,9 +388,11 @@ def update_agreement(
     changes = json_ready(payload, exclude_unset=True, exclude={"content", "expected_version"})
     if "expires_at" in payload.model_fields_set:
         changes["expires_at"] = payload.expires_at.isoformat() if payload.expires_at else None
-    for key in ("renewal_amount", "renewal_due_date", "source_invoice_id", "payment_instructions", "project_due_date"):
+    for key in ("amount", "renewal_amount", "renewal_due_date", "source_invoice_id", "payment_instructions", "project_due_date"):
         if key in payload.model_fields_set and getattr(payload, key) is None:
             changes[key] = None
+    if "visiting_fee_lkr" in payload.model_fields_set and payload.visiting_fee_lkr is None:
+        changes["visiting_fee_lkr"] = 0
     if payload.content is not None and payload.description is None:
         changes["description"] = payload.content
     try:
@@ -388,7 +402,7 @@ def update_agreement(
             source = first(gateway.service.table("invoices").select("client_id,status").eq("id", changes["source_invoice_id"]).limit(1).execute(), "Invoice")
             if source["client_id"] != str(changes.get("client_id", current["client_id"])) or source["status"] == "void":
                 raise HTTPException(422, "The source invoice must belong to this client and remain active")
-        if changes.keys() & {"terms", "amount", "currency", "commercial_details_visible", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date"}:
+        if changes.keys() & {"terms", "amount", "currency", "commercial_details_visible", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date", "renewal_amount", "renewal_currency", "renewal_due_date"}:
             changes["terms"] = scheduled_terms(current | changes)
         if "client_id" in changes:
             client = first(gateway.service.table("clients").select("name,company,email,phone").eq("id", changes["client_id"]).limit(1).execute(), "Client")
@@ -400,7 +414,7 @@ def update_agreement(
                 changes.update({"status": "sent", "viewed_at": None})
         if any(key in changes and changes[key] != current.get(key) for key in ("client_id", "client_name", "client_phone", "client_email")):
             # A prior recipient must not retain access to a reassigned document.
-            changes.update({"access_token_hash": None, "status": "draft", "sent_at": None, "viewed_at": None})
+            changes.update({"access_token_hash": None, "share_nonce": None, "status": "draft", "sent_at": None, "viewed_at": None})
         if (current | changes).get("status") in {"sent", "viewed"}:
             _ensure_shareable(current | changes)
         if changes:
@@ -419,6 +433,7 @@ def update_agreement(
 def share_agreement(
     agreement_id: UUID,
     request: Request,
+    payload: AgreementShareRequest | None = None,
     principal: Principal = Depends(current_admin),
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
@@ -429,8 +444,20 @@ def share_agreement(
     if current.get("status") == "void":
         raise HTTPException(status_code=409, detail="A void agreement cannot be shared")
     _ensure_shareable(current)
-    token = new_public_token()
+    options = payload or AgreementShareRequest()
+    nonce = str(current.get("share_nonce") or "")
+    replace_link = options.rotate or not nonce or not current.get("access_token_hash")
+    if not replace_link:
+        token = _agreement_token(str(current["public_id"]), nonce, settings)
+        replace_link = not secrets.compare_digest(
+            hash_public_token(token, settings.token_hash_pepper.get_secret_value()),
+            str(current["access_token_hash"]),
+        )
+    if replace_link:
+        nonce = str(uuid4())
+        token = _agreement_token(str(current["public_id"]), nonce, settings)
     changes = {
+        "share_nonce": nonce,
         "access_token_hash": hash_public_token(token, settings.token_hash_pepper.get_secret_value()),
         "status": "sent",
         "sent_at": utcnow().isoformat(),
@@ -440,7 +467,7 @@ def share_agreement(
         updated = rows(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").execute())
         if not updated:
             raise HTTPException(status_code=409, detail="This agreement changed. Reload before sharing.")
-        audit(gateway.service, request, settings, "share", "agreement", agreement_id, principal)
+        audit(gateway.service, request, settings, "share_rotated" if options.rotate else "share", "agreement", agreement_id, principal)
         url = _share_url(settings, token)
         return {"share": {"url": url, "share_url": url, "token": token, "version": updated[0].get("version", 1)}}
     except HTTPException:
@@ -461,7 +488,7 @@ def delete_or_void_agreement(
     try:
         changes = {"deleted_at": utcnow().isoformat()}
         if current.get("status") != "signed":
-            changes.update({"status": "void", "access_token_hash": None})
+            changes.update({"status": "void", "access_token_hash": None, "share_nonce": None})
         first(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).execute(), "Agreement")
         audit(gateway.service, request, settings, "delete", "agreement", agreement_id, principal,
               {"previous_status": current.get("status"), "evidence_retained": True})

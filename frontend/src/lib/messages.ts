@@ -90,8 +90,16 @@ export function agreementMessage(agreement: Agreement): ClientMessage {
         `${money(phase.amount, agreement.currency)} — ${phase.is_paid ? 'Recorded as received' : 'Pending'}`,
       )).join('\n')
     : ''
+  const commercialLines = [
+    Number(agreement.amount) > 0 ? `Project total: ${money(agreement.amount, agreement.currency)}` : '',
+    Number(agreement.visiting_fee_lkr) > 0 ? `Visiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')}${Number(agreement.amount) > 0 ? ' (part of the project total and credited once to the final balance after collection)' : ' (the agreed visit charge; any credit against a later project price must be stated in that quotation or invoice)'}` : '',
+    Number(agreement.renewal_amount) > 0 ? `Annual renewal: ${money(agreement.renewal_amount, agreement.renewal_currency || agreement.currency)}` : '',
+    agreement.renewal_due_date ? `Renewal / service expiry date: ${formatDate(agreement.renewal_due_date)}` : '',
+  ].filter(Boolean)
   const commercialSummary = showCommercial
-    ? `COMMERCIAL SUMMARY\nProject total: ${money(agreement.amount, agreement.currency)}${Number(agreement.visiting_fee_lkr) > 0 ? `\nVisiting fee: ${money(agreement.visiting_fee_lkr, 'LKR')} (part of the project total and credited once to the final balance after collection)` : ''}${Number(agreement.renewal_amount) > 0 ? `\nAnnual renewal: ${money(agreement.renewal_amount, agreement.renewal_currency || agreement.currency)}${agreement.renewal_due_date ? `\nRenewal / service expiry date: ${formatDate(agreement.renewal_due_date)}` : ''}` : '\nAnnual renewal: Not included in this agreement'}${schedule ? `\n\nPAYMENT MILESTONES\n${schedule}` : ''}`
+    ? commercialLines.length || schedule
+      ? `COMMERCIAL DETAILS\n${commercialLines.join('\n')}${schedule ? `${commercialLines.length ? '\n\n' : ''}PAYMENT MILESTONES\n${schedule}` : ''}`
+      : 'COMMERCIAL DETAILS\nNo project price, visiting fee, payment milestone or renewal charge is stated in this agreement. Any charge must be provided and accepted separately in writing.'
     : 'This scope-only agreement intentionally excludes project prices, payment milestones, visiting fees and renewal figures. Those commercial details will be provided separately if applicable.'
   return { subject: `Hich Web | Agreement ready for review | ${agreement.project_title || agreement.title}`, body: [
     greeting(getClientName(agreement.client, agreement.client_name)),
@@ -99,7 +107,7 @@ export function agreementMessage(agreement: Agreement): ClientMessage {
     `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
     commercialSummary,
     showCommercial
-      ? 'Please review the scope, total amount, payment milestones, any visiting fee, renewal details and the complete terms. If anything needs correction, reply before signing and we will update it.'
+      ? 'Please review the complete scope and terms, together with any commercial details listed above. Blank optional details are not included as agreed charges. If anything needs correction, reply before signing and we will update it.'
       : 'Please review the complete scope and general terms. If anything needs correction, reply before signing and we will update it.',
     agreement.share_url ? `REVIEW & SIGN SECURELY\n${agreement.share_url}` : '',
     'Next step: Open the private link, confirm the details and sign as the authorised signatory. Please do not forward the link. You can retain a copy after signing.',

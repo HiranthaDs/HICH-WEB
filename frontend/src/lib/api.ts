@@ -90,6 +90,7 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
       ? options.body as FormData
       : JSON.stringify(options.body)
   const method = String(options.method || 'GET').toUpperCase()
+  const maxTransientAttempts = path.startsWith('/public/') ? 3 : 1
   let response: Response
   try {
     response = await fetch(`${API_ROOT}${path}`, {
@@ -104,8 +105,8 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
       body,
     })
   } catch (error) {
-    if (method === 'GET' && transientAttempt === 0) {
-      await retryDelay(250)
+    if (method === 'GET' && transientAttempt < maxTransientAttempts) {
+      await retryDelay(250 * 2 ** transientAttempt)
       return request<T>(path, options, retried, transientAttempt + 1)
     }
     throw new ApiError('The server could not be reached. Check the connection and try again.', 0, error)
@@ -115,8 +116,9 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
     if (await refreshSession()) return request<T>(path, options, true, transientAttempt)
   }
 
-  if (method === 'GET' && transientAttempt === 0 && [408, 500, 502, 503, 504].includes(response.status)) {
-    await retryDelay(250)
+  const renderHasNoServer = response.status === 404 && response.headers.get('x-render-routing') === 'no-server'
+  if (method === 'GET' && transientAttempt < maxTransientAttempts && ([408, 500, 502, 503, 504].includes(response.status) || renderHasNoServer)) {
+    await retryDelay(250 * 2 ** transientAttempt)
     return request<T>(path, options, retried, transientAttempt + 1)
   }
 
@@ -230,8 +232,8 @@ export const api = {
     async create(data: Partial<Agreement>) { return unwrap<Agreement>(await request('/agreements', { method: 'POST', body: data }), ['agreement']) },
     async update(id: Agreement['id'], data: Partial<Agreement>) { return unwrap<Agreement>(await request(`/agreements/${id}`, { method: 'PUT', body: data }), ['agreement']) },
     remove: (id: Agreement['id'], pin?: string) => request<void>(`/agreements/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
-    async share(id: Agreement['id']) {
-      const payload = await request<unknown>(`/agreements/${id}/share`, { method: 'POST' })
+    async share(id: Agreement['id'], options: { rotate?: boolean } = {}) {
+      const payload = await request<unknown>(`/agreements/${id}/share`, { method: 'POST', body: options })
       return unwrap<{ url?: string; share_url?: string; token?: string }>(payload, ['share'])
     },
     pdf: (id: Agreement['id'], reference = 'agreement') => download(`/agreements/${id}/pdf`, `${reference}.pdf`),

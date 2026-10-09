@@ -13,6 +13,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.platypus import Image as PlatypusImage
 
+from .commercial_terms import scheduled_terms
+
 
 def _text(value: object) -> str:
     return escape("" if value is None else str(value)).replace("\n", "<br/>")
@@ -23,6 +25,8 @@ def agreement_pdf(agreement: dict[str, Any], signature_bytes: bytes | None = Non
 
     if agreement.get("signed_snapshot"):
         agreement = agreement | agreement["signed_snapshot"] | {"clients": {}, "portfolio_projects": {}}
+    if agreement.get("commercial_details_visible", True) is False:
+        agreement = agreement | {"terms": scheduled_terms(agreement | {"commercial_details_visible": False}, validate=False)}
     output = BytesIO()
     document = SimpleDocTemplate(
         output,
@@ -58,13 +62,12 @@ def agreement_pdf(agreement: dict[str, Any], signature_bytes: bytes | None = Non
         ["Project", _text(agreement.get("project_title"))],
         ["Status", _text(str(agreement.get("status") or "draft").upper())],
     ]
-    if show_commercial:
-        details.insert(-1, ["Budget", f"{_text(agreement.get('currency') or 'LKR')} {_text(agreement.get('amount') if agreement.get('amount') is not None else 'Not specified')}"])
-    if show_commercial and agreement.get("renewal_amount") is not None:
-        details.extend([
-            ["Annual renewal", f"{_text(agreement.get('renewal_currency') or 'LKR')} {_text(agreement.get('renewal_amount'))}"],
-            ["Service expires / renews", _text(agreement.get("renewal_due_date") or "To be agreed")],
-        ])
+    if show_commercial and agreement.get("amount") is not None and float(agreement["amount"]) > 0:
+        details.insert(-1, ["Budget", f"{_text(agreement.get('currency') or 'LKR')} {_text(agreement.get('amount'))}"])
+    if show_commercial and agreement.get("renewal_amount") is not None and float(agreement["renewal_amount"]) > 0:
+        details.append(["Annual renewal", f"{_text(agreement.get('renewal_currency') or 'LKR')} {_text(agreement.get('renewal_amount'))}"])
+    if show_commercial and agreement.get("renewal_due_date"):
+        details.append(["Service expires / renews", _text(agreement["renewal_due_date"])])
     details = [[Paragraph(label, styles["BodyText"]), Paragraph(value, styles["BodyText"])] for label, value in details]
     table = Table(details, colWidths=[35 * mm, 115 * mm])
     table.setStyle(

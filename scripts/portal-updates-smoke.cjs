@@ -96,6 +96,7 @@ fs.mkdirSync(output, { recursive: true });
     assert.ok(invoiceNavigation.current?.startsWith('Pending')); assert.equal(invoiceNavigation.completed, true); assert.equal(invoiceNavigation.actions, 1);
     checks.push('Pending invoices are the default, Completed is separate, and each invoice has one Actions button');
     await invoiceAction('INV-TEST', 'Edit payments');
+    await fill('Optional visiting fee (LKR)', '5000');
     await click('Add visiting fee'); await click('Add mid payment'); await click('Record final payment'); await click('Save changes', '.modal');
     await page.waitForSelector('.share-panel textarea');
     const update = writes.find(w => w.method === 'PUT' && w.endpoint === '/invoices/invoice-1');
@@ -133,14 +134,16 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(writes.find(w => w.data.email === 'temporary@example.test').data.temporary_password, 'Custom-temporary-123');
     await click('Done', '.modal'); checks.push('Admin-selected temporary password is submitted and login credentials are shown once');
 
-    agreements[0].status = 'signed'; await go('/admin/agreements'); await click('Delete'); await fill('Deletion PIN', '2113'); await click('Delete agreement', '.modal');
+    agreements[0].status = 'signed'; await go('/admin/agreements'); await click('Delete'); await page.waitForSelector('input[autocomplete="off"]'); await fill('Deletion PIN', '2113'); await click('Delete agreement', '.modal');
     await page.waitForFunction(() => !document.querySelector('.modal'));
     await go('/admin/agreements'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('AGR-NEW')); checks.push('Visible agreement delete accepts PIN and stays removed after reload, including signed agreements');
 
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); for (const route of ['/admin/invoices', '/admin/agreements', '/admin/settings', '/admin/income', '/admin/clients?client=client-1']) { await go(route); await noOverflow(`${route} ${width}`); } }
-    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Delete invoice'); await fill('Deletion PIN', '1234'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
+    await page.setViewport({ width: 1440, height: 1000 });
+    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Delete invoice'); await page.waitForSelector('input[autocomplete="off"]'); await fill('Deletion PIN', '1234'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes('correct deletion PIN')));
     assert.equal(invoice.status, 'partial'); await fill('Deletion PIN', '2113'); await click('Delete invoice', '.modal'); await page.waitForFunction(() => !document.querySelector('input[autocomplete="off"]')); assert.equal(invoice.status, 'void');
     await go('/admin/invoices'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('INV-TEST')); checks.push('Incorrect deletion PIN leaves data unchanged; correct PIN deletes and stays removed after reload');
+    await page.setViewport({ width: 320, height: 844 });
     await go('/admin/income'); await page.screenshot({ path: path.join(output, 'income-mobile.png'), fullPage: true }); checks.push('Settings, agreement, invoice, client profile and income fit 320 / 390 px');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ checks, errors, interceptedWrites: writes.length }, null, 2)); console.log(JSON.stringify({ checks, errors }, null, 2));
