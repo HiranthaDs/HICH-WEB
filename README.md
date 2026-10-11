@@ -1,8 +1,4 @@
-# Hich Client Portal
 
-Hich Client Portal is a full-stack operations workspace for managing clients, agreements, invoices, and published project work. It includes a private administrator portal and a public, token-based agreement-signing experience.
-
-The application is designed to run as one Render web service: FastAPI serves the API and the production React build, while Supabase provides Auth, Postgres, and Storage.
 
 ## Features
 
