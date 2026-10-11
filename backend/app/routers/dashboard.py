@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..calendar import calendar_report
 from ..data import db_failure, rows
 from ..dependencies import Principal, current_admin
 from ..intelligence import analyze_business
@@ -38,6 +39,43 @@ def income(start: date = Query(...), end: date = Query(...), _: Principal = Depe
         raise
     except Exception as exc:
         raise db_failure(exc, "load the income summary") from exc
+
+
+@router.get("/calendar")
+def calendar_view(
+    start: date = Query(...),
+    end: date = Query(...),
+    _: Principal = Depends(current_admin),
+    gateway: SupabaseGateway = Depends(get_supabase),
+):
+    if end < start:
+        raise HTTPException(422, "The end date must be on or after the start date")
+    if (end - start).days + 1 > 366:
+        raise HTTPException(422, "Calendar ranges cannot exceed 366 days")
+    try:
+        invoices = all_records(
+            gateway,
+            "invoices",
+            "id,agreement_id,client_id,invoice_kind,renewal_source_invoice_id,renewal_period_date,"
+            "invoice_number,project_title,status,project_value,currency,due_date,renewal_amount,"
+            "renewal_currency,renewal_due_date,deleted_at,clients(name,company)",
+        )
+        payments = all_records(
+            gateway,
+            "payments",
+            "id,invoice_id,amount,currency,paid_at,method,reference,date_confirmed",
+        )
+        agreements = all_records(
+            gateway,
+            "agreements",
+            "id,source_invoice_id,client_id,reference,title,project_title,status,currency,renewal_amount,"
+            "renewal_currency,renewal_due_date,deleted_at,clients(name,company)",
+        )
+        return {"calendar": calendar_report(invoices, payments, agreements, start, end)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_failure(exc, "load the calendar") from exc
 
 
 def _money(value: object) -> Decimal:

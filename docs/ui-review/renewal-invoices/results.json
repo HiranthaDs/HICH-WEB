@@ -1,5 +1,6 @@
 {
   "checks": [
+    "Pending invoices are the default, Completed is separate, and the source invoice has one Actions button",
     "Ten phases save without increasing the agreed total or changing partial receipts; cent rounding and fully-paid rejection",
     "Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message",
     "Opening the same renewal cycle reuses its paid invoice",

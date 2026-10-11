@@ -1761,3 +1761,184 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
 .renewal-service-row .icon-button { margin-bottom: 3px; }
 .renewal-fee-options { margin: 20px 0; }
 @media (max-width: 640px) { .renewal-service-row { grid-template-columns: minmax(0, 1fr) auto; } .renewal-service-row > .field { grid-column: 1 / -1; } .renewal-service-row > .field:nth-child(3) { grid-column: 1; } }
+
+/* A compact, client-ready invoice that also prints cleanly to A4/PDF. */
+.invoice-layout { grid-template-columns: minmax(0, 820px) 300px; justify-content: center; gap: 22px; }
+.invoice-paper { padding: 0 !important; overflow: hidden; border-radius: 18px; box-shadow: 0 12px 36px rgba(25,35,60,.07); }
+.invoice-masthead { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 25px 30px; border-bottom: 1px solid var(--line); }
+.invoice-masthead__brand .brand__logo { width: 104px; height: auto; }
+.invoice-masthead__brand small { display: block; margin: 3px 0 0 4px; color: var(--muted-2); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.invoice-masthead__title { display: flex; align-items: center; gap: 11px; text-align: right; }
+.invoice-masthead__title .document-icon { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 12px; color: var(--brand); background: var(--brand-light); }
+.invoice-masthead__title .eyebrow { margin: 0 0 3px; }
+.invoice-masthead__title h1 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.invoice-balance-hero { min-height: 126px; padding: 24px 30px; display: flex; align-items: center; justify-content: space-between; gap: 20px; color: #fff; background: linear-gradient(120deg,#182b4a 0%,#263d64 72%,#315276 100%); }
+.invoice-balance-hero span, .invoice-balance-hero small { display: block; color: #c8d5e8; font-size: 10px; }
+.invoice-balance-hero strong { display: block; margin: 5px 0; font-size: clamp(27px,4vw,36px); line-height: 1.1; letter-spacing: -.045em; }
+.invoice-balance-hero .status { color: #163b2d; background: #b9efcf; border: 0; }
+.invoice-meta { display: grid; grid-template-columns: 1.15fr 1.35fr .75fr .75fr; margin: 0; border-bottom: 1px solid var(--line); }
+.invoice-meta > div { min-width: 0; padding: 18px 20px; border-right: 1px solid var(--line); }
+.invoice-meta > div:last-child { border-right: 0; }
+.invoice-meta dt, .invoice-service-period span { margin-bottom: 6px; color: var(--muted-2); font-size: 8px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.invoice-meta dd { margin: 0; color: var(--ink); font-size: 11px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.invoice-meta small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+.invoice-service-period { display: flex; justify-content: space-between; gap: 20px; margin: 0; padding: 11px 30px; color: var(--brand); background: var(--brand-light); font-size: 10px; }
+.invoice-service-period span { margin: 0; color: var(--brand); }
+.invoice-lines, .invoice-receipts { padding: 25px 30px 0; }
+.invoice-lines h2, .invoice-receipts h2, .invoice-notes-grid h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: -.01em; }
+.invoice-paper .document-table { margin: 0; }
+.invoice-paper .document-table th { padding: 10px 11px; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.invoice-paper .document-table td { padding: 12px 11px; font-size: 10px; }
+.invoice-paper .document-table td strong, .invoice-paper .document-table td small { display: block; }
+.invoice-paper .document-table td small { margin-top: 4px; color: var(--muted-2); font-size: 8px; text-transform: capitalize; }
+.invoice-paper .document-table th:nth-child(2), .invoice-paper .document-table td:nth-child(2) { width: 86px; color: var(--muted); }
+.invoice-paper .invoice-totals { width: min(100% - 60px,320px); margin: 18px 30px 8px auto; padding: 15px 17px; border: 1px solid #e3e7f4; background: #f8f9fd; }
+.invoice-paper .invoice-totals > div { margin-bottom: 8px; font-size: 9px; }
+.invoice-paper .invoice-totals > div:last-child { margin-top: 10px; padding-top: 11px; }
+.invoice-paper .invoice-totals > div:last-child strong { font-size: 18px; }
+.invoice-notes-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; padding: 18px 30px; }
+.invoice-notes-grid section { padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcff; }
+.invoice-notes-grid p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.65; overflow-wrap: anywhere; }
+.invoice-renewal-note { margin: 18px 30px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 4px 18px; border-radius: 12px; color: #704814; background: #fff6e7; }
+.invoice-renewal-note span { font-size: 9px; font-weight: 750; }
+.invoice-renewal-note strong { grid-row: span 2; align-self: center; font-size: 14px; }
+.invoice-renewal-note small { color: #93652a; font-size: 8px; }
+.invoice-footer { margin-top: 22px; padding: 20px 30px; display: flex; align-items: end; justify-content: space-between; gap: 22px; border-top: 1px solid var(--line); }
+.invoice-footer strong, .invoice-footer span { display: block; }
+.invoice-footer strong { font-size: 11px; }
+.invoice-footer span, .invoice-footer small { margin-top: 4px; color: var(--muted-2); font-size: 8px; line-height: 1.6; }
+.invoice-footer > small { text-align: right; }
+.invoice-actions .share-panel { padding: 22px; }
+.invoice-actions .share-panel > svg { color: var(--green); }
+.invoice-actions .share-panel h2 { font-size: 20px; }
+.invoice-actions .text-link { margin-left: 6px; }
+.invoice-actions--paid { border-color: #cbe7d6; background: #f3fbf6; }
+
+@media (max-width: 980px) {
+  .invoice-layout { grid-template-columns: minmax(0,1fr); }
+}
+
+@media (max-width: 760px) {
+  .invoice-layout { width: calc(100% - 20px) !important; grid-template-columns: minmax(0,1fr); }
+  .invoice-paper { border-radius: 15px; }
+  .invoice-masthead, .invoice-balance-hero { padding-inline: 18px; }
+  .invoice-masthead__brand small { display: none; }
+  .invoice-masthead__title .document-icon { display: none; }
+  .invoice-masthead__title h1 { max-width: 145px; font-size: 15px; }
+  .invoice-meta { grid-template-columns: 1fr 1fr; }
+  .invoice-meta > div:nth-child(2) { border-right: 0; }
+  .invoice-meta > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .invoice-lines, .invoice-receipts { padding-inline: 18px; }
+  .invoice-paper .invoice-totals { width: calc(100% - 36px); margin-inline: 18px; }
+  .invoice-notes-grid { padding-inline: 18px; }
+  .invoice-renewal-note { margin-inline: 18px; }
+  .invoice-footer { padding-inline: 18px; align-items: flex-start; flex-direction: column; }
+  .invoice-footer > small { text-align: left; }
+}
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  .public-invoice .invoice-screen-header, .public-invoice .invoice-screen-footer, .public-invoice .invoice-actions { display: none !important; }
+  .public-invoice .invoice-layout { display: block; width: 100%; margin: 0; }
+  .public-invoice .invoice-paper { display: block; width: 100%; border: 0; box-shadow: none; }
+  .invoice-masthead, .invoice-balance-hero, .invoice-meta > div, .invoice-service-period, .invoice-lines tr, .invoice-totals, .invoice-notes-grid section, .invoice-renewal-note, .invoice-footer { break-inside: avoid; }
+  .invoice-balance-hero { min-height: 94px; padding-block: 17px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .invoice-masthead { padding-block: 18px; }
+  .invoice-lines, .invoice-receipts { padding-top: 18px; }
+  .invoice-footer { margin-top: 15px; }
+}
+
+/* Income calendar: isolated from report tables and public document print styles. */
+.income-calendar { margin-block: 22px; padding: 0; overflow: hidden; }
+.income-calendar__header { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 23px 24px 18px; }
+.income-calendar__header h2 { margin: 3px 0 5px; font-size: 20px; }
+.income-calendar__header p:not(.eyebrow) { margin: 0; max-width: 580px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.income-calendar__navigation { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.income-calendar__navigation > strong { min-width: 132px; text-align: center; font-size: 12px; }
+.income-calendar__legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 24px 17px; border-bottom: 1px solid var(--line); }
+.income-calendar__legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 999px; color: var(--muted); background: #f7f8fc; font-size: 9px; font-weight: 680; }
+.income-calendar__legend-item i { width: 7px; height: 7px; border-radius: 50%; background: #8b91a7; }
+.income-calendar__legend-item strong { color: var(--ink); font-size: 9px; }
+.income-calendar__legend-item--receipt i { background: #2a9b68; }
+.income-calendar__legend-item--invoice_due i { background: var(--brand); }
+.income-calendar__legend-item--renewal_due i { background: #d18b2f; }
+.income-calendar > .inline-alert { margin: 14px 24px 0; }
+.income-calendar > .loading-state { min-height: 260px; }
+.income-calendar__grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); border-bottom: 1px solid var(--line); }
+.income-calendar__weekday { padding: 10px 8px; color: var(--muted-2); background: #fafbfe; border-right: 1px solid var(--line); text-align: center; font-size: 8px; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; }
+.income-calendar__weekday:nth-child(7) { border-right: 0; }
+.income-calendar__day { min-width: 0; min-height: 126px; padding: 8px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); background: #fff; transition: background .15s ease, box-shadow .15s ease; }
+.income-calendar__day:nth-child(7n + 14) { border-right: 0; }
+.income-calendar__day--outside { background: #fafbfe; }
+.income-calendar__day--selected { position: relative; z-index: 1; box-shadow: inset 0 0 0 2px rgba(34,51,255,.2); background: #fafaff; }
+.income-calendar__date { width: 27px; height: 27px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 9px; color: var(--ink); background: transparent; font-size: 10px; font-weight: 720; cursor: pointer; }
+.income-calendar__date:hover, .income-calendar__date:focus-visible { color: var(--brand); background: var(--brand-light); outline: none; }
+.income-calendar__day--outside .income-calendar__date { color: #b3b7c6; }
+.income-calendar__day--today .income-calendar__date { color: #fff; background: var(--brand); }
+.income-calendar__day-events { display: grid; gap: 5px; margin-top: 5px; }
+.income-calendar__event { min-width: 0; padding: 6px 7px; display: block; border-left: 3px solid #8b91a7; border-radius: 7px; color: var(--ink); background: #f4f5f9; text-decoration: none; }
+.income-calendar__event span, .income-calendar__event strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.income-calendar__event span { font-size: 7.5px; font-weight: 710; }
+.income-calendar__event strong { margin-top: 3px; font-size: 7.5px; }
+.income-calendar__event--receipt { border-color: #2a9b68; background: #eef9f4; }
+.income-calendar__event--invoice_due { border-color: var(--brand); background: #f0f2ff; }
+.income-calendar__event--renewal_due { border-color: #d18b2f; background: #fff6e8; }
+.income-calendar__day-events > button { padding: 2px 3px; border: 0; color: var(--brand); background: transparent; text-align: left; font-size: 7.5px; font-weight: 700; cursor: pointer; }
+.income-calendar__selection { padding: 20px 24px 24px; background: #fbfcff; }
+.income-calendar__selection > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.income-calendar__selection > header > div { display: flex; align-items: center; gap: 8px; }
+.income-calendar__selection h3 { margin: 0; font-size: 12px; }
+.income-calendar__selection > header > span { color: var(--muted); font-size: 9px; }
+.income-calendar__selection > p { margin: 0; color: var(--muted); font-size: 10px; }
+.income-calendar__details { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.income-calendar__detail { min-width: 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-left: 3px solid #8b91a7; border-radius: 11px; background: #fff; }
+.income-calendar__detail--receipt { border-left-color: #2a9b68; }
+.income-calendar__detail--invoice_due { border-left-color: var(--brand); }
+.income-calendar__detail--renewal_due { border-left-color: #d18b2f; }
+.income-calendar__detail-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: var(--muted); background: #f4f5f9; }
+.income-calendar__detail--receipt .income-calendar__detail-icon { color: #287c59; background: #edf8f3; }
+.income-calendar__detail--invoice_due .income-calendar__detail-icon { color: var(--brand); background: var(--brand-light); }
+.income-calendar__detail--renewal_due .income-calendar__detail-icon { color: #a7691e; background: #fff4e2; }
+.income-calendar__detail > div { min-width: 0; }
+.income-calendar__detail small, .income-calendar__detail strong, .income-calendar__detail p, .income-calendar__detail em { display: block; overflow-wrap: anywhere; }
+.income-calendar__detail small { color: var(--muted-2); font-size: 7.5px; text-transform: capitalize; }
+.income-calendar__detail > div > strong { margin-top: 3px; font-size: 10px; }
+.income-calendar__detail p, .income-calendar__detail em { margin: 3px 0 0; color: var(--muted); font-size: 8px; font-style: normal; }
+.income-calendar__detail-value { text-align: right; }
+.income-calendar__detail-value > strong { font-size: 10px; }
+.income-calendar__detail-value .text-link { margin-top: 5px; justify-content: flex-end; font-size: 8px; }
+.income-calendar__agenda { display: none; }
+
+@media (max-width: 900px) {
+  .income-calendar__header { align-items: flex-start; flex-direction: column; }
+  .income-calendar__navigation { width: 100%; justify-content: flex-start; }
+  .income-calendar__day { min-height: 108px; padding: 6px; }
+  .income-calendar__details { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 700px) {
+  .income-calendar__header { padding: 19px 17px 14px; }
+  .income-calendar__header h2 { font-size: 18px; }
+  .income-calendar__navigation { display: grid; grid-template-columns: auto minmax(100px,1fr) auto auto; }
+  .income-calendar__navigation > strong { min-width: 0; }
+  .income-calendar__legend { padding: 0 17px 14px; gap: 6px; }
+  .income-calendar__legend-item { padding: 5px 7px; }
+  .income-calendar > .inline-alert { margin-inline: 17px; }
+  .income-calendar__grid, .income-calendar__selection { display: none; }
+  .income-calendar__agenda { display: block; padding: 4px 17px 18px; }
+  .income-calendar__agenda > section { padding-block: 14px; border-bottom: 1px solid var(--line); }
+  .income-calendar__agenda > section:last-child { border-bottom: 0; }
+  .income-calendar__agenda > section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .income-calendar__agenda > section > header strong { font-size: 10px; }
+  .income-calendar__agenda > section > header span { width: 21px; height: 21px; display: grid; place-items: center; border-radius: 50%; color: var(--brand); background: var(--brand-light); font-size: 8px; font-weight: 750; }
+  .income-calendar__agenda > section > div { display: grid; gap: 7px; }
+  .income-calendar__detail { grid-template-columns: auto minmax(0,1fr); padding: 10px; }
+  .income-calendar__detail-value { grid-column: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; }
+  .income-calendar__detail-value .text-link { margin: 0; }
+}
+
+@media (max-width: 380px) {
+  .income-calendar__navigation { grid-template-columns: auto minmax(90px,1fr) auto; }
+  .income-calendar__navigation .button { grid-column: 1 / -1; width: 100%; justify-content: center; }
+  .income-calendar__legend-item { font-size: 8px; }
+}

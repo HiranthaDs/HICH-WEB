@@ -19,7 +19,9 @@ from ..invoice_sharing import (
     RenewalInvoiceRequest,
     invoice_token,
     invoice_token_hash,
+    invoice_token_hash_candidates,
     public_invoice_shape,
+    recover_legacy_invoice_token,
 )
 from ..models import (
     MilestoneCreate,
@@ -28,7 +30,7 @@ from ..models import (
     PaymentUpdate,
     json_ready,
 )
-from ..security import client_ip, enforce_rate_limit
+from ..security import client_ip, enforce_rate_limit, is_stable_public_token
 from ..supabase_client import SupabaseGateway, get_supabase
 from ..income import COLOMBO
 
@@ -387,14 +389,14 @@ def create_payment(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
-    record = json_ready(payload) | {
-        "invoice_id": str(invoice_id),
-        "amount": str(payload.amount),
-        "created_by": str(principal.id),
-    }
+    fields = json_ready(payload) | {"amount": str(payload.amount)}
     try:
-        created = first(gateway.service.table("payments").insert(record).execute(), "Payment")
-        audit(gateway.service, request, settings, "create", "payment", created["id"], principal, {"invoice_id": str(invoice_id)})
+        created = first(gateway.service.rpc("record_invoice_payment", {
+            "p_invoice_id": str(invoice_id), "p_fields": fields, "p_actor_id": str(principal.id),
+        }).execute(), "Payment")
+        audit(gateway.service, request, settings, "create", "payment", created["id"], principal, {
+            "invoice_id": str(invoice_id), "receipt_number": created.get("receipt_number"),
+        })
         return {"payment": created, "invoice": _get(invoice_id, gateway)}
     except HTTPException:
         raise
@@ -445,6 +447,7 @@ def delete_payment(
     settings: Settings = Depends(get_settings),
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> Response:
+    require_deletion_pin(request, settings, principal)
     try:
         deleted = rows(gateway.service.table("payments").delete().eq("id", str(payment_id)).eq("invoice_id", str(invoice_id)).execute())
         if not deleted:
@@ -467,22 +470,51 @@ def share_invoice(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     options = payload or InvoiceShareRequest()
-    nonce = str(uuid4())
-    token = invoice_token(str(invoice_id), nonce, settings)
     try:
+        current = first(
+            gateway.service.table("invoices")
+            .select("id,status,deleted_at,share_active,share_nonce,share_token_hash,share_token_version")
+            .eq("id", str(invoice_id)).is_("deleted_at", "null").limit(1).execute(),
+            "Invoice",
+        )
+        token: str | None = None
+        if current.get("share_active") and current.get("share_nonce") and current.get("share_token_hash") and not options.rotate:
+            if current.get("share_token_version") == 2:
+                candidate = invoice_token(str(invoice_id), str(current["share_nonce"]), settings)
+                if hmac.compare_digest(invoice_token_hash(candidate, settings), str(current["share_token_hash"])):
+                    token = candidate
+            else:
+                token = recover_legacy_invoice_token(current, settings)
+
+        replace_link = options.rotate or token is None
+        nonce = str(uuid4()) if replace_link else str(current["share_nonce"])
+        token = invoice_token(str(invoice_id), nonce, settings) if replace_link else token
         record = first(gateway.service.rpc("publish_invoice_link", {
             "p_invoice_id": str(invoice_id), "p_nonce": nonce,
-            "p_token_hash": invoice_token_hash(token, settings), "p_rotate": options.rotate,
-            "p_expires_at": options.expires_at.isoformat() if options.expires_at else None,
-            "p_set_expiry": "expires_at" in options.model_fields_set,
+            "p_token_hash": invoice_token_hash(token, settings), "p_rotate": replace_link,
+            # Permanent links also clear a deadline left by an older release.
+            "p_expires_at": None, "p_set_expiry": True,
         }).execute(), "Invoice")
-        token = invoice_token(str(invoice_id), str(record["share_nonce"]), settings)
+
+        # A concurrent publisher or a legacy row with an unavailable former key
+        # must self-heal to v2 instead of surfacing a signing-key error.
         if not hmac.compare_digest(invoice_token_hash(token, settings), str(record["share_token_hash"])):
-            raise HTTPException(status_code=409, detail="The signing key changed. Regenerate this invoice link.")
-        audit(gateway.service, request, settings, "share_rotated" if options.rotate else "share", "invoice", invoice_id, principal)
+            recovered = None if record.get("share_token_version") == 2 else recover_legacy_invoice_token(record, settings)
+            if recovered:
+                token = recovered
+            else:
+                replace_link = True
+                nonce = str(uuid4())
+                token = invoice_token(str(invoice_id), nonce, settings)
+                record = first(gateway.service.rpc("publish_invoice_link", {
+                    "p_invoice_id": str(invoice_id), "p_nonce": nonce,
+                    "p_token_hash": invoice_token_hash(token, settings), "p_rotate": True,
+                    "p_expires_at": None, "p_set_expiry": True,
+                }).execute(), "Invoice")
+        audit(gateway.service, request, settings, "share_rotated" if replace_link else "share", "invoice", invoice_id, principal)
         return {
             "share_url": f"{str(settings.public_app_url).rstrip('/')}/invoice/{token}",
-            "token": token, "expires_at": record.get("share_expires_at"),
+            "token": token,
             "invoice": _get(invoice_id, gateway),
         }
     except HTTPException:
@@ -501,7 +533,7 @@ def revoke_invoice_share(
 ) -> Response:
     try:
         first(gateway.service.table("invoices").update({
-            "share_active": False, "share_nonce": None, "share_token_hash": None,
+            "share_active": False, "share_nonce": None, "share_token_hash": None, "share_token_version": None,
         }).eq("id", str(invoice_id)).execute(), "Invoice")
         audit(gateway.service, request, settings, "share_revoked", "invoice", invoice_id, principal)
         return Response(status_code=204)

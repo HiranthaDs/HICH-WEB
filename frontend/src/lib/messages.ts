@@ -17,19 +17,19 @@ export function invoiceMessage(invoice: Invoice): ClientMessage {
       receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at),
       `${money(receipt.amount, invoice.currency)}${receipt.method ? ` — ${receipt.method}` : ''}`,
     )).join('\n')
-    return { subject: `Hich Web | ${invoice.reference || 'Renewal invoice'} | ${balance > 0 ? 'Domain & hosting renewal invoice' : 'Paid renewal invoice'}`, body: [
+    return { subject: `Renewal invoice ${invoice.reference || ''} · ${money(balance > 0 ? balance : total, invoice.currency)} · ${balance > 0 ? 'Payment due' : 'Paid'}`.replace(/\s+/g, ' ').trim(), body: [
       greeting(getClientName(invoice.client, invoice.client_name)),
       balance > 0
-        ? 'Your domain / hosting renewal invoice is ready. Please review the summary below.'
-        : 'Thank you. We have received your renewal payment. Your paid domain / hosting renewal invoice is available below for your records.',
-      `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nService: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nRenewal cycle / service expiry: ${formatDate(invoice.renewal_period_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nRemaining balance: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
+        ? 'Your domain and hosting renewal invoice is ready.'
+        : 'Thank you—your domain and hosting renewal invoice is now paid in full.',
+      `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nService: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nService period / expiry: ${formatDate(invoice.renewal_period_date)}` : ''}${invoice.issue_date ? `\nIssued: ${formatDate(invoice.issue_date)}` : ''}${balance > 0 && invoice.due_date ? `\nDue: ${formatDate(invoice.due_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPaid: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}`,
       services || lateFee > 0 ? `SERVICE CHARGES\n${[services, lateFee > 0 ? bullet('Agreed late-payment surcharge (18%, once) — itemized late fee', money(lateFee, invoice.currency)) : ''].filter(Boolean).join('\n')}` : '',
       receipts ? `PAYMENTS RECEIVED\n${receipts}` : '',
       balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
-      invoice.share_url ? `VIEW ${balance > 0 ? 'RENEWAL' : 'PAID RENEWAL'} INVOICE\n${invoice.share_url}` : '',
+      invoice.share_url ? `OPEN SECURE INVOICE\n${invoice.share_url}` : '',
       balance > 0
-        ? 'Next step: Please use the renewal invoice reference when paying, then reply with your transfer receipt so we can confirm the payment.'
-        : 'This invoice confirms cleared payment. Service renewal is confirmed separately after the registrar or hosting provider completes it.',
+        ? `Please include reference ${invoice.reference || 'shown above'} with payment and reply with the receipt so we can confirm cleared funds.`
+        : 'No balance remains. Service completion is confirmed separately after the registrar or hosting provider finishes processing.',
       invoice.customer_note ? `NOTE\n${invoice.customer_note}` : '',
       closing,
     ].filter(Boolean).join('\n\n') }
@@ -38,18 +38,18 @@ export function invoiceMessage(invoice: Invoice): ClientMessage {
     p.name,
     `${money(p.amount, invoice.currency)} — ${p.is_paid ?? p.isPaid ? 'Received' : Number(p.paid_amount) > 0 ? `Part received (${money(p.paid_amount, invoice.currency)})` : 'Pending'}${p.paid_at ? ` (${formatDate(p.paid_at)})` : ''}`,
   )).join('\n')
-  return { subject: `Hich Web | ${invoice.reference || 'Invoice'} | ${balance > 0 ? 'Payment update' : 'Payment complete'}`, body: [
+  return { subject: `Invoice ${invoice.reference || ''} · ${money(balance > 0 ? balance : total, invoice.currency)} · ${balance > 0 ? 'Payment due' : 'Paid'}`.replace(/\s+/g, ' ').trim(), body: [
     greeting(getClientName(invoice.client, invoice.client_name)),
     balance > 0
-      ? `Here is the latest payment update for ${invoice.project_title || 'your project'}.`
-      : `Your invoice for ${invoice.project_title || 'your project'} is now fully paid. Thank you for your payment.`,
-    `INVOICE SUMMARY\nReference: ${invoice.reference || 'Project invoice'}\nProject: ${invoice.project_title || 'Your project'}\nProject total: ${money(total, invoice.currency)}\nPayments received: ${money(paid, invoice.currency)}\nRemaining balance: ${money(balance, invoice.currency)}${balance > 0 && invoice.due_date ? `\nPayment due: ${formatDate(invoice.due_date)}` : ''}`,
+      ? `Your invoice for ${invoice.project_title || 'your project'} is ready.`
+      : `Thank you—your invoice for ${invoice.project_title || 'your project'} is now paid in full.`,
+    `INVOICE SUMMARY\nReference: ${invoice.reference || 'Project invoice'}\nProject: ${invoice.project_title || 'Your project'}${invoice.issue_date ? `\nIssued: ${formatDate(invoice.issue_date)}` : ''}${balance > 0 && invoice.due_date ? `\nDue: ${formatDate(invoice.due_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPaid: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}`,
     phases ? `PAYMENT BREAKDOWN\n${phases}` : '',
     balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
-    invoice.share_url ? `VIEW YOUR LATEST INVOICE\n${invoice.share_url}` : '',
+    invoice.share_url ? `OPEN SECURE INVOICE\n${invoice.share_url}` : '',
     balance > 0
-      ? 'Next step: Please use your invoice reference when paying, then reply with the transfer receipt so we can confirm cleared funds. If you have already paid, please send the payment details and we will update the record.'
-      : 'We have recorded the payment and no balance remains on this invoice.',
+      ? `Please include reference ${invoice.reference || 'shown above'} with payment and reply with the receipt. If you have already paid, send the payment details and we will update the invoice.`
+      : 'No balance remains. You can open the secure invoice and save a PDF copy for your records.',
     invoice.customer_note ? `NOTE\n${invoice.customer_note}` : '',
     closing,
   ].filter(Boolean).join('\n\n') }
@@ -120,15 +120,29 @@ export function professionalEmail(subject: string, body: string): string {
   const sections = body.split(/\n\n+/).map(block => {
     const lines = block.split('\n')
     const isHeading = /^[A-Z0-9 &/—-]{4,}$/.test(lines[0])
-    const content = lines.map((line, i) => {
-      const safe = escape(line)
-      if (isHeading && i === 0) return `<h2 style="font-size:12px;letter-spacing:1px;color:#5263ff;margin:0 0 12px">${safe}</h2>`
-      if (/^https:\/\//.test(line)) return `<a href="${safe}" style="color:#2535dc;word-break:break-all">${safe}</a>`
-      return safe
-    }).join('<br>')
-    return `<div style="margin:0 0 20px;${isHeading ? 'background:#f4f6fc;border:1px solid #e5e9f3;border-radius:10px;padding:20px;' : ''}">${content}</div>`
+    const title = isHeading ? lines.shift() || '' : ''
+    const isSummary = /(?:INVOICE|RENEWAL) (?:SUMMARY|DETAILS)/.test(title)
+    const isAction = /^(?:OPEN|VIEW)/.test(title) && lines.some(line => /^https:\/\//.test(line))
+    if (isAction) {
+      const url = lines.find(line => /^https:\/\//.test(line)) || ''
+      return `<div style="margin:4px 0 18px"><a href="${escape(url)}" style="display:inline-block;background:#5263ff;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:12px 18px;border-radius:9px">${escape(title.replace('OPEN', 'View').replace('VIEW', 'View').toLowerCase().replace(/^./, c => c.toUpperCase()))}</a></div>`
+    }
+    if (isSummary) {
+      const rows = lines.map(line => {
+        const separator = line.indexOf(':')
+        const label = separator > -1 ? line.slice(0, separator) : ''
+        const value = separator > -1 ? line.slice(separator + 1).trim() : line
+        const highlight = /balance due|invoice total|remaining balance/i.test(label)
+        return `<tr><td style="padding:5px 10px 5px 0;color:#738098;font-size:12px">${escape(label)}</td><td style="padding:5px 0;text-align:right;font-size:12px;font-weight:${highlight ? '700' : '600'};color:${highlight ? '#1e2fc5' : '#243149'}">${escape(value)}</td></tr>`
+      }).join('')
+      return `<div style="margin:0 0 16px;background:#f6f7fb;border:1px solid #e4e8f1;border-radius:11px;padding:15px 17px"><h2 style="font-size:10px;letter-spacing:1.2px;color:#5263ff;margin:0 0 7px">${escape(title)}</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="0">${rows}</table></div>`
+    }
+    const content = lines.map(line => /^https:\/\//.test(line)
+      ? `<a href="${escape(line)}" style="color:#2535dc;word-break:break-all">${escape(line)}</a>`
+      : escape(line)).join('<br>')
+    return `<div style="margin:0 0 16px;${isHeading ? 'border-left:3px solid #d8ddff;padding:2px 0 2px 14px;' : ''}">${isHeading ? `<h2 style="font-size:10px;letter-spacing:1.1px;color:#5263ff;margin:0 0 7px">${escape(title)}</h2>` : ''}${content}</div>`
   }).join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f1f4fa;font-family:Arial,sans-serif;color:#243149"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:28px 12px"><table role="presentation" width="100%" style="max-width:640px;margin:auto;background:white;border-radius:16px" cellspacing="0" cellpadding="0"><tr><td style="background:#192a46;color:white;padding:28px;border-radius:16px 16px 0 0"><strong style="font-size:25px;letter-spacing:2px">HICH WEB</strong><p style="font-size:12px;color:#c0cee6;margin:8px 0 0">Client Services · Websites & Systems</p></td></tr><tr><td style="padding:30px 28px;font-size:14px;line-height:1.7"><h1 style="font-size:21px;line-height:1.4;margin:0 0 24px">${escape(subject)}</h1>${sections}</td></tr><tr><td style="padding:22px 28px;border-top:1px solid #edf0f6;font-size:12px;color:#68778f">Hich Web | Clear scope. Recorded payments. Reliable service.<br>Please keep private document links secure.</td></tr></table></td></tr></table></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#f2f4f8;font-family:Arial,sans-serif;color:#243149"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:20px 10px"><table role="presentation" width="100%" style="max-width:600px;margin:auto;background:#fff;border:1px solid #e4e8f1;border-radius:14px;overflow:hidden" cellspacing="0" cellpadding="0"><tr><td style="background:#192a46;color:#fff;padding:20px 24px"><strong style="font-size:20px;letter-spacing:1.6px">HICH WEB</strong><span style="float:right;font-size:10px;color:#c8d5e8;padding-top:5px">WEBSITES &amp; SYSTEMS</span></td></tr><tr><td style="padding:24px;font-size:13px;line-height:1.6"><h1 style="font-size:18px;line-height:1.35;margin:0 0 20px;color:#17243a">${escape(subject)}</h1>${sections}</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #edf0f6;font-size:10px;line-height:1.6;color:#758198">Hich Web · Clear scope. Recorded payments. Reliable service.<br>Keep private document links secure.</td></tr></table></td></tr></table></body></html>`
 }
 
 export function downloadEmailDraft(to: string, subject: string, body: string) {

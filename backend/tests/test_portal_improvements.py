@@ -48,6 +48,40 @@ def test_render_environment_origin_is_allowed_without_trusting_host_headers():
     assert client.post("/login", headers={"Referer": "https://evil.example/login"}).status_code == 403
 
 
+def test_vercel_system_urls_are_trusted_origins_without_allowing_spoofed_hosts():
+    cfg = settings(
+        environment="production",
+        frontend_origins="https://old.example",
+        public_app_url="http://localhost:8000",
+        vercel_project_production_url="hich-web.vercel.app",
+        vercel_url="hich-web-git-main-team.vercel.app",
+        frontend_url="https://hich-web-git-main-team.vercel.app",
+    )
+    assert str(cfg.public_app_url).rstrip("/") == "https://hich-web.vercel.app"
+    assert cfg.allowed_origins == [
+        "https://old.example",
+        "https://hich-web.vercel.app",
+        "https://hich-web-git-main-team.vercel.app",
+    ]
+    app = FastAPI(); app.add_middleware(BrowserOriginMiddleware, settings=cfg)
+    @app.post("/login")
+    def login(): return {"ok": True}
+    client = TestClient(app)
+    assert client.post("/login", headers={"Origin": "https://hich-web.vercel.app"}).status_code == 200
+    assert client.post("/login", headers={"Origin": "https://evil.example", "X-Forwarded-Host": "hich-web.vercel.app"}).status_code == 403
+
+
+def test_invalid_vercel_url_is_not_added_as_an_origin():
+    cfg = settings(vercel_project_production_url="javascript://hich-web.vercel.app", vercel_url="https://user:pass@hich-web.vercel.app", frontend_url="ftp://hich-web.vercel.app")
+    assert cfg.allowed_origins == ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def test_vercel_frontend_service_url_is_a_same_deployment_fallback():
+    cfg = settings(environment="production", public_app_url="http://localhost:8000", frontend_url="https://hich-web.vercel.app")
+    assert str(cfg.public_app_url).rstrip("/") == "https://hich-web.vercel.app"
+    assert "https://hich-web.vercel.app" in cfg.allowed_origins
+
+
 def test_public_login_path_is_normalized_and_render_replaces_production_localhost_links():
     assert str(settings(public_app_url="https://hich-web.onrender.com/admin/login").public_app_url).rstrip("/") == "https://hich-web.onrender.com"
     cfg = settings(environment="production", public_app_url="http://localhost:5173", render_external_url="https://hich-web.onrender.com")
@@ -310,6 +344,17 @@ def test_professional_email_escapes_client_content_and_has_plain_text_alternativ
     html = sent[0].get_body(preferencelist=('html',)).get_content()
     assert '<script>' not in html and '&lt;script&gt;' in html
     assert 'HICH WEB' in html and 'INVOICE SUMMARY' in html
+
+
+def test_professional_invoice_email_has_compact_summary_and_secure_action():
+    html = communications.professional_html(
+        "Invoice INV-101 · LKR 5,000 · Payment due",
+        "Hello Client,\n\nINVOICE SUMMARY\nReference: INV-101\nInvoice total: LKR 10,000\nBalance due: LKR 5,000\n\nOPEN SECURE INVOICE\nhttps://hich-web.vercel.app/invoice/token?x=1&y=2",
+    )
+    assert 'background:#f6f7fb' in html
+    assert 'View secure invoice' in html
+    assert 'href="https://hich-web.vercel.app/invoice/token?x=1&amp;y=2"' in html
+    assert '<title>Invoice INV-101 · LKR 5,000 · Payment due</title>' in html
 
 
 def test_email_configuration_does_not_claim_delivery_when_unconfigured():

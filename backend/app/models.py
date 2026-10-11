@@ -487,6 +487,7 @@ class InvoiceUpdate(APIModel):
 
 
 class PaymentCreate(APIModel):
+    idempotency_key: UUID
     milestone_id: UUID | None = None
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     currency: str = Field(default="LKR", min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
@@ -509,6 +510,7 @@ class PaymentUpdate(APIModel):
 class PaymentResponse(PaymentCreate):
     id: UUID
     invoice_id: UUID
+    receipt_number: str
     created_by: UUID | None = None
     created_at: datetime
     updated_at: datetime

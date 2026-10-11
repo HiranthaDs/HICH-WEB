@@ -34,18 +34,33 @@ def professional_html(subject: str, body: str) -> str:
         if not lines:
             continue
         heading = bool(re.fullmatch(r"[A-Z &/—-]{5,}", lines[0]))
+        title = lines.pop(0) if heading else ""
+        is_summary = bool(re.search(r"(?:INVOICE|RENEWAL) (?:SUMMARY|DETAILS)", title))
+        is_action = title.startswith(("OPEN", "VIEW")) and any(line.startswith("https://") for line in lines)
+        if is_action:
+            url = next(line for line in lines if line.startswith("https://"))
+            label = re.sub(r"^(?:OPEN|VIEW)", "View", title, count=1).capitalize()
+            sections.append(f'<div style="margin:4px 0 18px"><a href="{escape(url)}" style="display:inline-block;background:#5263ff;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:12px 18px;border-radius:9px">{escape(label)}</a></div>')
+            continue
+        if is_summary:
+            rows = []
+            for line in lines:
+                label, separator, value = line.partition(":")
+                if not separator:
+                    label, value = "", line
+                highlight = bool(re.search(r"balance due|invoice total|remaining balance", label, re.I))
+                weight, color = ("700", "#1e2fc5") if highlight else ("600", "#243149")
+                rows.append(f'<tr><td style="padding:5px 10px 5px 0;color:#738098;font-size:12px">{escape(label)}</td><td style="padding:5px 0;text-align:right;font-size:12px;font-weight:{weight};color:{color}">{escape(value.strip())}</td></tr>')
+            sections.append(f'<div style="margin:0 0 16px;background:#f6f7fb;border:1px solid #e4e8f1;border-radius:11px;padding:15px 17px"><h2 style="font-size:10px;letter-spacing:1.2px;color:#5263ff;margin:0 0 7px">{escape(title)}</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="0">{"".join(rows)}</table></div>')
+            continue
         content = []
-        for index, line in enumerate(lines):
+        for line in lines:
             safe = escape(line)
-            if heading and index == 0:
-                content.append(f'<h2 style="font-size:12px;color:#5263ff;letter-spacing:1px">{safe}</h2>')
-            elif line.startswith("https://"):
-                content.append(f'<a href="{safe}" style="color:#2535dc;word-break:break-all">{safe}</a>')
-            else:
-                content.append(safe)
-        style = "background:#f4f6fc;border:1px solid #e5e9f3;border-radius:10px;padding:20px;" if heading else ""
-        sections.append(f'<div style="margin:0 0 20px;{style}">' + "<br>".join(content) + "</div>")
-    return '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f1f4fa;font-family:Arial,sans-serif;color:#243149"><table role="presentation" width="100%"><tr><td style="padding:28px 12px"><table role="presentation" width="100%" style="max-width:640px;margin:auto;background:white;border-radius:16px" cellspacing="0" cellpadding="0"><tr><td style="background:#192a46;color:white;padding:28px;border-radius:16px 16px 0 0"><strong style="font-size:25px;letter-spacing:2px">HICH WEB</strong><p style="font-size:12px;color:#c0cee6">Client Services · Websites & Systems</p></td></tr><tr><td style="padding:30px 28px;font-size:14px;line-height:1.7"><h1 style="font-size:21px">' + escape(subject) + '</h1>' + "".join(sections) + '</td></tr><tr><td style="padding:22px 28px;border-top:1px solid #edf0f6;font-size:12px;color:#68778f">Hich Web | Please keep private document links secure.</td></tr></table></td></tr></table></body></html>'
+            content.append(f'<a href="{safe}" style="color:#2535dc;word-break:break-all">{safe}</a>' if line.startswith("https://") else safe)
+        style = "border-left:3px solid #d8ddff;padding:2px 0 2px 14px;" if heading else ""
+        heading_html = f'<h2 style="font-size:10px;letter-spacing:1.1px;color:#5263ff;margin:0 0 7px">{escape(title)}</h2>' if heading else ""
+        sections.append(f'<div style="margin:0 0 16px;{style}">{heading_html}' + "<br>".join(content) + "</div>")
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escape(subject) + '</title></head><body style="margin:0;background:#f2f4f8;font-family:Arial,sans-serif;color:#243149"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:20px 10px"><table role="presentation" width="100%" style="max-width:600px;margin:auto;background:#fff;border:1px solid #e4e8f1;border-radius:14px;overflow:hidden" cellspacing="0" cellpadding="0"><tr><td style="background:#192a46;color:#fff;padding:20px 24px"><strong style="font-size:20px;letter-spacing:1.6px">HICH WEB</strong><span style="float:right;font-size:10px;color:#c8d5e8;padding-top:5px">WEBSITES &amp; SYSTEMS</span></td></tr><tr><td style="padding:24px;font-size:13px;line-height:1.6"><h1 style="font-size:18px;line-height:1.35;margin:0 0 20px;color:#17243a">' + escape(subject) + '</h1>' + "".join(sections) + '</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #edf0f6;font-size:10px;line-height:1.6;color:#758198">Hich Web · Clear scope. Recorded payments. Reliable service.<br>Keep private document links secure.</td></tr></table></td></tr></table></body></html>'
 
 
 def email_ready(settings: Settings) -> bool:

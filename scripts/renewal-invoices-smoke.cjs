@@ -121,7 +121,7 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
     const message = await page.$eval('.share-panel textarea', e => e.value);
     assert.equal(renewal.status, 'paid'); assert.equal(renewal.payment_records.length, 2);
-    assert.ok(message.includes('paid domain / hosting renewal invoice') && message.includes('18%, once'));
+    assert.ok(message.includes('paid in full') && message.includes('18%, once'));
     assert.ok(!message.includes('100,000') && !message.includes('9,000') && !message.includes('GBP'));
     await page.screenshot({ path: path.join(output, 'paid-renewal-message.png'), fullPage: true });
     checks.push('Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message');

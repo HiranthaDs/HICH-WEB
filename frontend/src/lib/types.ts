@@ -86,6 +86,20 @@ export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 
 
 export type RenewalItem = { service: 'domain' | 'hosting' | 'domain_hosting'; description: string; amount: number }
 
+export interface PaymentRecord {
+  id: string
+  receipt_number: string
+  idempotency_key?: string
+  milestone_id?: string
+  amount: number
+  currency: string
+  paid_at: string
+  date_confirmed?: boolean
+  method?: string
+  reference?: string
+  notes?: string
+}
+
 export interface Invoice {
   invoice_kind?: 'project' | 'renewal'
   renewal_source_invoice_id?: Id
@@ -132,7 +146,7 @@ export interface Invoice {
     paid_at?: string
     paid_amount?: number
   }>
-  payment_records?: Array<{ id: string; milestone_id?: string; amount: number; currency: string; paid_at: string; date_confirmed?: boolean; method?: string; reference?: string; notes?: string }>
+  payment_records?: PaymentRecord[]
 }
 
 export interface PortfolioProject {
@@ -226,6 +240,34 @@ export interface IncomeReport {
   clients: Array<{ currency: string; client_id: string; name: string; collected: number; receipts: number }>
   ledger: Array<{ id: string; invoice_id: string; client_id: string; client_name: string; reference: string; project_title: string; amount: number; currency: string; method: string; payment_reference?: string; paid_at: string; invoice_status: string }>
   receivables: Array<{ invoice_id: string; client_id: string; reference: string; client_name: string; project_title: string; currency: string; total: number; paid: number; balance: number; due_date?: string; days_overdue: number }>
+}
+
+export type CalendarEventType = 'receipt' | 'invoice_due' | 'renewal_due'
+
+export interface CalendarEvent {
+  id: string
+  type: CalendarEventType
+  date: string
+  title: string
+  amount: number
+  currency: string
+  client_id?: Id
+  client_name: string
+  invoice_id?: Id
+  source_invoice_id?: Id
+  agreement_id?: Id
+  reference?: string
+  project_title?: string
+  status?: string
+  invoice_status?: string
+  method?: string
+  payment_reference?: string
+}
+
+export interface CalendarReport {
+  start: string
+  end: string
+  events: CalendarEvent[]
 }
 
 export type InsightSeverity = 'critical' | 'warning' | 'opportunity' | 'success' | 'info'

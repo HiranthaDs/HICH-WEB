@@ -17,6 +17,8 @@ fs.mkdirSync(output, { recursive: true });
     const agreements = [{ id: 'old-agreement', reference: 'AGR-OLD', title: 'Older agreement', client_id: client.id, client_name: client.name, project_title: 'Earlier project', amount: 50000, currency: 'LKR', status: 'draft', created_at: '2026-10-01T00:00:00Z' }];
     const users = [{ id: 'owner', email: 'owner@example.test', full_name: 'Owner', role: 'admin', active: true }];
     const income = { start: '2026-10-01', end: '2026-10-08', as_of: '2026-10-08', note: 'Cash receipts and current receivables are separate.', currencies: [{ currency: 'LKR', collected: 20000, invoiced: 100000, outstanding: 80000, overdue: 0, lifetime_collected: 20000, draft_value: 0, overpayments: 0, collected_on_void: 0, receipts: 1, invoices: 1, aging: { not_due: 80000 } }, { currency: 'USD', collected: 100, invoiced: 300, outstanding: 200, overdue: 0, lifetime_collected: 100, draft_value: 0, receipts: 1, invoices: 1, aging: { not_due: 200 } }], ledger: [{ id: 'receipt-1', invoice_id: invoice.id, client_id: client.id, client_name: client.name, reference: invoice.reference, project_title: invoice.project_title, amount: 20000, currency: 'LKR', method: 'Bank transfer', paid_at: '2026-10-01T06:30:00Z', invoice_status: 'partial' }], receivables: [], monthly: [{ currency: 'LKR', month: '2026-10', collected: 20000 }], methods: [], clients: [] };
+    const calendarDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+    const calendar = { start: `${calendarDate.slice(0, 7)}-01`, end: calendarDate, events: [{ id: 'receipt:receipt-1', type: 'receipt', date: calendarDate, title: 'Payment received · INV-TEST', amount: 20000, currency: 'LKR', client_id: client.id, client_name: client.name, invoice_id: invoice.id, reference: invoice.reference, project_title: invoice.project_title, status: 'received', method: 'Bank transfer' }, { id: 'renewal:invoice-1', type: 'renewal_due', date: calendarDate, title: 'Renewal due · Business website', amount: 12000, currency: 'LKR', client_id: client.id, client_name: client.name, invoice_id: invoice.id, project_title: invoice.project_title, status: 'scheduled' }] };
     page.on('pageerror', error => errors.push(error.message));
     await page.setRequestInterception(true);
     page.on('request', request => {
@@ -59,6 +61,7 @@ fs.mkdirSync(output, { recursive: true });
       else if (endpoint.endsWith('/share') && endpoint.startsWith('/agreements/')) payload = { share: { share_url: base + '/sign/test' } };
       else if (endpoint === '/communications/email-status') payload = { available: false };
       else if (endpoint === '/income') payload = { income };
+      else if (endpoint === '/calendar') payload = { calendar };
       else if (endpoint === '/auth/users' && method === 'POST') { const { temporary_password, ...profile } = data; users.push({ ...profile, id: `staff-${users.length}`, active: true }); payload = { user: users.at(-1), message: temporary_password ? 'User created.' : 'Invitation sent.' }; }
       else if (endpoint === '/auth/users') payload = { users };
       request.respond({ status, contentType: 'application/json', body: status === 204 ? undefined : JSON.stringify(payload) });
@@ -137,6 +140,11 @@ fs.mkdirSync(output, { recursive: true });
     agreements[0].status = 'signed'; await go('/admin/agreements'); await click('Delete'); await page.waitForSelector('input[autocomplete="off"]'); await fill('Deletion PIN', '2113'); await click('Delete agreement', '.modal');
     await page.waitForFunction(() => !document.querySelector('.modal'));
     await go('/admin/agreements'); assert.ok(!(await page.$eval('body', e => e.innerText)).includes('AGR-NEW')); checks.push('Visible agreement delete accepts PIN and stays removed after reload, including signed agreements');
+
+    await go('/admin/income'); await page.waitForSelector('.income-calendar__grid');
+    assert.equal(await page.$$eval('.income-calendar__weekday', items => items.length), 7);
+    assert.ok((await page.$eval('.income-calendar', element => element.innerText)).includes('Renewal due'));
+    checks.push('Income calendar renders the seven-day month grid with receipt and renewal events');
 
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); for (const route of ['/admin/invoices', '/admin/agreements', '/admin/settings', '/admin/income', '/admin/clients?client=client-1']) { await go(route); await noOverflow(`${route} ${width}`); } }
     await page.setViewport({ width: 1440, height: 1000 });

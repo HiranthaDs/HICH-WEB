@@ -5,16 +5,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .config import Settings
 from .models import InvoiceCreate, InvoiceUpdate
-from .security import hash_public_token
+from .security import hash_public_token, is_stable_public_token, stable_public_token, stable_public_token_hash
 
 
 class RenewalItem(BaseModel):
@@ -91,28 +91,44 @@ class InvoiceDocumentUpdate(InvoiceUpdate):
 class InvoiceShareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rotate: bool = False
-    expires_at: datetime | None = None
-
-    @field_validator("expires_at")
-    @classmethod
-    def future_expiry(cls, value: datetime | None) -> datetime | None:
-        if value is None:
-            return None
-        value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
-        if value <= datetime.now(timezone.utc):
-            raise ValueError("Link expiry must be in the future")
-        return value
 
 
 def invoice_token(invoice_id: str, nonce: str, settings: Settings) -> str:
-    """Recreate a stable, unguessable link without storing its bearer token."""
-    key = settings.token_hash_pepper.get_secret_value() or settings.supabase_secret_key.get_secret_value()
+    """Return the key-independent v2 token used for newly published links."""
+    del settings  # retained in the signature for compatibility with existing callers
+    return stable_public_token(invoice_id, nonce)
+
+
+def invoice_token_hash(token: str, settings: Settings) -> str:
+    if is_stable_public_token(token):
+        return stable_public_token_hash("invoice", token)
+    return hash_public_token(f"invoice:{token}", settings.token_hash_pepper.get_secret_value())
+
+
+def legacy_invoice_token(invoice_id: str, nonce: str, key: str) -> str:
     digest = hmac.new(key.encode(), f"hich-invoice-v1:{invoice_id}:{nonce}".encode(), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
-def invoice_token_hash(token: str, settings: Settings) -> str:
-    return hash_public_token(f"invoice:{token}", settings.token_hash_pepper.get_secret_value())
+def invoice_token_hash_candidates(token: str, settings: Settings) -> tuple[str, ...]:
+    """Lookup hashes for current v2 links and all configured legacy peppers."""
+    if is_stable_public_token(token):
+        return (stable_public_token_hash("invoice", token),)
+    peppers = ("", *settings.legacy_link_key_set)
+    return tuple(dict.fromkeys(hash_public_token(f"invoice:{token}", pepper) for pepper in peppers))
+
+
+def recover_legacy_invoice_token(record: dict[str, Any], settings: Settings) -> str | None:
+    """Reconstruct a legacy deterministic URL when its former key is available."""
+    invoice_id, nonce, expected = record.get("id"), record.get("share_nonce"), str(record.get("share_token_hash") or "")
+    if not invoice_id or not nonce or not expected:
+        return None
+    hash_peppers = ("", *settings.legacy_link_key_set)
+    for key in settings.legacy_link_key_set:
+        token = legacy_invoice_token(str(invoice_id), str(nonce), key)
+        if any(hmac.compare_digest(hash_public_token(f"invoice:{token}", pepper), expected) for pepper in hash_peppers):
+            return token
+    return None
 
 
 def public_invoice_shape(record: dict[str, Any]) -> dict[str, Any]:
@@ -139,7 +155,7 @@ def public_invoice_shape(record: dict[str, Any]) -> dict[str, Any]:
         for item in record.get("payments", [])
     ]
     public["payment_records"] = [
-        {key: item.get(key) for key in ("amount", "currency", "method", "paid_at", "date_confirmed")}
+        {key: item.get(key) for key in ("receipt_number", "amount", "currency", "method", "paid_at", "date_confirmed")}
         for item in record.get("payment_records", [])
     ]
     public["renewal_items"] = [

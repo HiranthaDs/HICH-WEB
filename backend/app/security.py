@@ -12,6 +12,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
+from uuid import UUID
 
 from fastapi import HTTPException, Request, Response, status
 
@@ -41,6 +42,37 @@ def new_public_token() -> str:
 
 def hash_public_token(token: str, pepper: str = "") -> str:
     return hmac.new(pepper.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+PUBLIC_TOKEN_V2_PREFIX = "v2_"
+
+
+def stable_public_token(document_id: str, nonce: str) -> str:
+    """Build a high-entropy, reconstructable bearer token without a deployment key.
+
+    Both UUIDs are server-generated. The nonce supplies the secret entropy while the
+    document id makes accidental cross-record reuse impossible. Unlike the legacy
+    HMAC-derived links, this format survives application-secret rotation.
+    """
+
+    payload = UUID(str(document_id)).bytes + UUID(str(nonce)).bytes
+    return PUBLIC_TOKEN_V2_PREFIX + base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def stable_public_token_hash(document_type: str, token: str) -> str:
+    """Return the database lookup digest for a v2 bearer token."""
+
+    return hashlib.sha256(f"hich-{document_type}-v2:{token}".encode("utf-8")).hexdigest()
+
+
+def is_stable_public_token(token: str) -> bool:
+    if not re.fullmatch(r"v2_[A-Za-z0-9_-]{43}", token):
+        return False
+    try:
+        payload = base64.urlsafe_b64decode(token[len(PUBLIC_TOKEN_V2_PREFIX):] + "=")
+        return len(payload) == 32
+    except (ValueError, binascii.Error):
+        return False
 
 
 def content_sha256(*parts: object) -> str:
