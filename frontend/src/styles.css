@@ -573,7 +573,7 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 .agreement-card__hint { margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--muted-2); font-size: 9px; }
 
 .invoice-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 15px; }
-.invoice-summary article { min-height: 84px; display: flex; align-items: center; gap: 13px; padding: 16px; border-radius: 16px; border: 1px solid var(--line); background: #fff; }
+.invoice-summary article { min-width: 0; min-height: 84px; display: flex; align-items: center; gap: 13px; padding: 16px; border-radius: 16px; border: 1px solid var(--line); background: #fff; }
 .invoice-summary article > span { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: var(--green); background: var(--green-light); }
 .invoice-summary small, .invoice-summary strong { display: block; }
 .invoice-summary small { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .07em; font-weight: 750; }
@@ -638,7 +638,7 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 @media (max-width: 900px) { .income-breakdowns { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .income-metrics, .terms-overview__cards { grid-template-columns: 1fr; } .account-panel { padding: 18px; } .invoice-form--payments-first > .milestone-editor { padding: 12px; } .invoice-sections { width: 100%; } .invoice-sections button { flex: 1; justify-content: center; } .data-notice { align-items: flex-start; flex-direction: column; } }
 .milestone-editor, .renewal-editor, .image-manager { padding: 19px; border: 1px solid var(--line); border-radius: 16px; background: #f8faf7; }
-.milestone-editor > header, .image-manager > header { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+.milestone-editor > header, .milestone-editor > fieldset > header, .image-manager > header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; }
 .milestone-editor .eyebrow, .renewal-editor .eyebrow, .image-manager .eyebrow { margin: 0 0 3px; }
 .milestone-editor h3, .renewal-editor h3, .image-manager h3 { margin: 0; font-size: 16px; }
 .milestone-editor header p:not(.eyebrow), .renewal-editor > div > p:not(.eyebrow), .image-manager header p:not(.eyebrow) { margin: 4px 0 0; color: var(--muted); font-size: 10px; }

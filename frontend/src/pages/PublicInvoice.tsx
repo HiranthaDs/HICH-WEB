@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, FileText, LockKeyhole, Printer, RefreshCw } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Download, FileText, LockKeyhole, Printer, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Brand } from '../components/Brand'
@@ -12,6 +12,8 @@ export function PublicInvoice() {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState('')
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try { setInvoice(await api.publicInvoice(token)) }
@@ -87,7 +89,14 @@ export function PublicInvoice() {
           {isPaid ? <CheckCircle2 size={36} /> : <p className="eyebrow">Payment</p>}
           <h2>{isPaid ? 'Paid in full' : `${money(balance)} due`}</h2>
           <p>{isPaid ? 'Your cleared payment has been recorded. Keep this invoice for your records.' : invoice.payment_method || 'Please use the payment instructions shown on the invoice.'}</p>
-          <Button icon={Printer} onClick={() => window.print()}>Print / Save PDF</Button>
+          <Button icon={Download} loading={pdfBusy} onClick={async () => {
+            setPdfBusy(true); setPdfError('')
+            try { await api.publicInvoicePdf(token) }
+            catch (error) { setPdfError(error instanceof Error ? error.message : 'PDF could not be downloaded. Please retry.') }
+            finally { setPdfBusy(false) }
+          }}>Download PDF</Button>
+          {pdfError && <p role="alert">{pdfError}</p>}
+          <Button variant="secondary" icon={Printer} onClick={() => window.print()}>Print / Save PDF</Button>
           <Button variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
         </section>
         <Link className="text-link" to="/"><ArrowLeft size={15} />Visit Hich Web</Link>

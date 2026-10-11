@@ -255,7 +255,7 @@ def test_optional_agreement_details_control_the_generated_long_terms():
     base = {"amount": None, "currency": "LKR", "visiting_fee_lkr": 0, "terms": default_terms()}
     minimal = scheduled_terms(base)
     schedule = minimal["Project-specific commercial schedule"]
-    assert "No project total is stated" in schedule
+    assert "No overall project total is stated" in schedule
     assert "32. Hich Web visiting fee and final-balance credit" not in minimal
     assert "34. Renewal deadlines and disclosed late charges" not in minimal
     assert len(minimal) >= 30

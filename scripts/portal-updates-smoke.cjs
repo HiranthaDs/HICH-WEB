@@ -44,11 +44,11 @@ fs.mkdirSync(output, { recursive: true });
       else if (endpoint === '/invoices/invoice-1') payload = { invoice };
       else if (endpoint.endsWith('/share') && endpoint.startsWith('/invoices/')) payload = { invoice, share_url: base + '/invoice/test' };
       else if (endpoint === '/invoices/invoice-1/payments') {
-        invoice.payment_records.push({ ...data, id: 'receipt-2' });
+        invoice.payment_records.push({ ...data, id: 'receipt-2', receipt_number: 'RCT-00000002' });
         invoice.paid_amount += Number(data.amount);
         const phase = invoice.payments.find(p => p.id === data.milestone_id);
         if (phase) { phase.paid_amount += Number(data.amount); phase.is_paid = phase.paid_amount >= phase.amount; }
-        payload = { invoice };
+        payload = { invoice, payment: invoice.payment_records.at(-1) };
       }
       else if (endpoint === '/agreements/template') payload = { template };
       else if (endpoint.startsWith('/agreements/from-invoice/')) payload = { agreement: { ...template, client_id: client.id, client_name: client.name, client_phone: client.phone, client_email: client.email, source_invoice_id: invoice.id, project_title: invoice.project_title, amount: invoice.amount, currency: invoice.currency, renewal_amount: invoice.renewal_amount, renewal_currency: invoice.renewal_currency, renewal_due_date: invoice.renewal_due_date, visiting_fee_lkr: 5000, payment_instructions: invoice.payment_instructions, payment_schedule: invoice.payments.map(p => ({ name: p.name, amount: p.amount, received_amount: p.paid_amount, is_paid: p.is_paid })) } };
@@ -88,7 +88,10 @@ fs.mkdirSync(output, { recursive: true });
       assert.ok(id, `Missing field ${label}`); return `[id="${id}"]`;
     };
     const fill = async (label, value) => { const selector = await field(label); await page.$eval(selector, (e, value) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, value); e.dispatchEvent(new Event('input', { bubbles: true })); }, value); };
-    const noOverflow = async label => { assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Overflow: ${label}`); };
+    const noOverflow = async label => {
+      const overflow = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, elements: [...document.querySelectorAll('body *')].filter(node => node.getBoundingClientRect().right > innerWidth + 1).slice(0, 12).map(node => ({ tag: node.tagName, class: typeof node.className === 'string' ? node.className : '', right: node.getBoundingClientRect().right })) }));
+      assert.ok(overflow.scroll <= overflow.width + 1, `Overflow: ${label} ${JSON.stringify(overflow)}`);
+    };
 
     await page.setViewport({ width: 1440, height: 1000 }); await go('/admin/invoices');
     const invoiceNavigation = await page.evaluate(() => ({
@@ -108,16 +111,24 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(update.data.payments.find(p => /Mid/.test(p.name)).amount, 35000);
     assert.equal(update.data.payments.find(p => /Final/.test(p.name)).is_paid, true);
     const message = await page.$eval('.share-panel textarea', e => e.value);
-    assert.ok(message.includes('PAYMENT BREAKDOWN') && message.includes('Remaining balance') && message.includes('Payments received'));
+    assert.ok(message.includes('PAYMENT BREAKDOWN') && message.includes('Balance due') && message.includes('Paid:'));
     assert.ok(!(await page.$eval('.modal', element => element.textContent)).includes('Link expiry'));
     await click('Preview professional email layout', '.share-panel').catch(async () => page.click('.email-preview summary'));
     const iframe = await page.$('iframe[title="Professional email preview"]'); const frame = await iframe.contentFrame();
     assert.ok((await frame.$eval('body', e => e.textContent)).includes('HICH WEB'));
     await page.screenshot({ path: path.join(output, 'invoice-client-message.png') }); checks.push('Mid / final / visiting-fee allocation; balanced total; prepared payment message and HTML email');
 
-    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Add payment'); await page.waitForSelector('#receipt-form'); await page.select(await field('Payment milestone'), 'advance'); await fill('Payment amount (LKR)', '2000'); await fill('Transfer / receipt reference', 'TR-002'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
+    await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Add payment'); await page.waitForSelector('#receipt-form');
+    assert.ok(await page.$('.modal .milestone-editor'));
+    await click('Add phase', '.modal'); await click('Save payment plan', '.modal');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.modal button')].some(button => button.textContent === 'Save payment plan'));
+    assert.equal(invoice.payments.length, 5); assert.equal(invoice.payments.reduce((sum, phase) => sum + phase.amount, 0), invoice.amount);
+    await page.setViewport({ width: 390, height: 844 }); await noOverflow('Record a payment mobile');
+    await page.screenshot({ path: path.join(output, 'record-payment-plan-mobile.png'), fullPage: true });
+    await page.setViewport({ width: 1440, height: 1000 });
+    await page.select(await field('Payment milestone'), 'advance'); await fill('Payment amount (LKR)', '2000'); await fill('Transfer / receipt reference', 'TR-002'); await click('Save payment & prepare receipt'); await page.waitForSelector('.share-panel textarea');
     assert.equal(writes.find(w => w.endpoint === '/invoices/invoice-1/payments').data.amount, 2000);
-    assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('Part received')); checks.push('Partial payment receipt retains amount, milestone and transfer reference');
+    assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('RCT-00000002')); checks.push('Partial payment receipt retains amount, milestone and transfer reference');
 
     await go('/admin/invoices'); await invoiceAction('INV-TEST', 'Create agreement'); await page.waitForFunction(() => document.querySelector('input[placeholder="Project or engagement name"]')?.value === 'Business website');
     assert.equal(await page.$eval(await field('Client name'), e => e.value), client.name);
@@ -125,10 +136,10 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(await page.$eval(await field('Visiting fee (LKR)'), e => e.value), '5000');
     await click('Create signing link', '.modal'); await page.waitForSelector('.share-panel textarea');
     const created = writes.find(w => w.endpoint === '/agreements' && w.method === 'POST');
-    assert.equal(created.data.source_invoice_id, invoice.id); assert.equal(created.data.payment_schedule.length, 4); assert.equal(created.data.renewal_amount, 12000);
+    assert.equal(created.data.source_invoice_id, invoice.id); assert.equal(created.data.payment_schedule.length, 5); assert.equal(created.data.renewal_amount, 12000);
     await go('/admin/agreements'); assert.equal(await page.$eval('.agreement-card .agreement-card__copy > span', e => e.textContent), 'AGR-NEW'); checks.push('Invoice copies contact, budget, payments, renewal and fee into agreement; newest agreement first');
 
-    await go('/admin/settings'); await click('Invite user'); await fill('Full name', 'Operations User'); await fill('Email', 'operations@example.test'); await page.select(await field('Account setup'), 'email'); await click('Send invitation', '.modal'); await page.waitForFunction(() => !document.querySelector('#user-access-form'));
+    await go('/admin/settings'); assert.ok((await page.$eval('body', node => node.innerText)).includes('V 2.0.1')); await click('Invite user'); await fill('Full name', 'Operations User'); await fill('Email', 'operations@example.test'); await page.select(await field('Account setup'), 'email'); await click('Send invitation', '.modal'); await page.waitForFunction(() => !document.querySelector('#user-access-form'));
     const invited = writes.find(w => w.endpoint === '/auth/users' && w.method === 'POST'); assert.equal(invited.data.role, 'staff'); assert.equal(invited.data.email, 'operations@example.test'); assert.equal(invited.data.password, undefined); checks.push('Staff invited by email with no admin-selected password');
 
     await click('Invite user'); await fill('Full name', 'Temporary User'); await fill('Email', 'temporary@example.test'); await fill('Temporary password', 'Custom-temporary-123'); await click('Create user', '.modal');

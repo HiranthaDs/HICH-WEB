@@ -140,7 +140,7 @@ def calendar_report(
         invoice
         for invoice in invoices
         if (invoice.get("invoice_kind") or "project") == "project"
-        and invoice.get("status") != "void"
+        and invoice.get("status") not in {"draft", "void"}
         and not invoice.get("deleted_at")
     ]
     renewal_sources = [

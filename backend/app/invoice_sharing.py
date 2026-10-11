@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from uuid import UUID
@@ -91,6 +91,8 @@ class InvoiceDocumentUpdate(InvoiceUpdate):
 class InvoiceShareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rotate: bool = False
+    # Older browser bundles send this. Accept it without applying a deadline.
+    expires_at: datetime | None = Field(default=None, exclude=True)
 
 
 def invoice_token(invoice_id: str, nonce: str, settings: Settings) -> str:

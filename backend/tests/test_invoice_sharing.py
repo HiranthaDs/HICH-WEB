@@ -60,15 +60,17 @@ def test_public_invoice_whitelist_includes_balances_but_no_private_data() -> Non
     assert "email" not in public["client"]
 
 
-def test_link_tokens_are_stable_distinct_and_keyed(settings: Settings) -> None:
-    token = invoice_token("invoice-a", "nonce-a", settings)
-    assert len(token) == 43
-    assert token == invoice_token("invoice-a", "nonce-a", settings)
-    assert token != invoice_token("invoice-a", "nonce-b", settings)
-    assert token != invoice_token("invoice-b", "nonce-a", settings)
+def test_link_tokens_survive_secret_rotation_but_change_with_nonce(settings: Settings) -> None:
+    invoice_id, nonce = str(uuid4()), str(uuid4())
+    token = invoice_token(invoice_id, nonce, settings)
+    assert len(token) == 46
+    assert token == invoice_token(invoice_id, nonce, settings)
+    assert token != invoice_token(invoice_id, str(uuid4()), settings)
+    assert token != invoice_token(str(uuid4()), nonce, settings)
     assert token not in invoice_token_hash(token, settings)
     changed_key = settings.model_copy(update={"token_hash_pepper": settings.supabase_secret_key})
-    assert token != invoice_token("invoice-a", "nonce-a", changed_key)
+    assert token == invoice_token(invoice_id, nonce, changed_key)
+    assert invoice_token_hash(token, settings) == invoice_token_hash(token, changed_key)
 
 
 def test_invoice_input_preserves_public_fields_and_requires_valid_phases() -> None:
@@ -82,11 +84,9 @@ def test_invoice_input_preserves_public_fields_and_requires_valid_phases() -> No
         InvoiceDocumentUpdate(expected_revision=0)
 
 
-def test_share_expiry_must_be_in_future() -> None:
-    with pytest.raises(ValidationError, match="future"):
-        InvoiceShareRequest(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
-    future = InvoiceShareRequest(expires_at=datetime.now(timezone.utc) + timedelta(days=1))
-    assert future.expires_at.tzinfo is not None
+def test_legacy_expiry_payload_is_accepted_but_never_applied() -> None:
+    for expiry in (None, datetime.now(timezone.utc) - timedelta(days=1), datetime.now(timezone.utc) + timedelta(days=1)):
+        assert InvoiceShareRequest(expires_at=expiry).model_dump() == {"rotate": False}
 
 
 @pytest.mark.parametrize("project_currency,renewal_currency", [("USD", "GBP"), ("LKR", "USD"), ("GBP", "LKR")])
@@ -109,15 +109,20 @@ class Query:
     def __init__(self, records: list[dict]):
         self.records = records
         self.filters = []
+        self.memberships = []
 
     def select(self, _): return self
     def eq(self, key, value):
         self.filters.append((key, value))
         return self
     def limit(self, _): return self
+    def in_(self, key, values):
+        self.memberships.append((key, values))
+        return self
     def execute(self):
         return SimpleNamespace(data=[deepcopy(record) for record in self.records
-                                     if all(record.get(key) == value for key, value in self.filters)])
+                                     if all(record.get(key) == value for key, value in self.filters)
+                                     and all(record.get(key) in values for key, values in self.memberships)])
 
 
 def public_client(settings: Settings, record: dict) -> TestClient:
@@ -148,9 +153,10 @@ def test_public_endpoint_reloads_latest_data_with_same_token(settings: Settings)
 
 @pytest.mark.parametrize("change,expected", [
     ({"share_active": False}, 404), ({"status": "draft"}, 404), ({"status": "void"}, 404),
-    ({"share_expires_at": "2000-01-01T00:00:00Z"}, 410),
+    ({"share_expires_at": "2000-01-01T00:00:00Z"}, 200),
+    ({"deleted_at": "2026-10-01T00:00:00Z"}, 404),
 ])
-def test_public_endpoint_blocks_revoked_draft_void_and_expired(settings: Settings, change: dict, expected: int) -> None:
+def test_public_endpoint_respects_revocation_but_ignores_old_deadlines(settings: Settings, change: dict, expected: int) -> None:
     record = invoice_record()
     token = invoice_token(record["id"], record["share_nonce"], settings)
     record["share_token_hash"] = invoice_token_hash(token, settings)
@@ -162,3 +168,73 @@ def test_public_endpoint_rejects_unknown_and_malformed_links(settings: Settings)
     client = public_client(settings, invoice_record())
     assert client.get("/public/invoices/guess").status_code == 404
     assert client.get(f"/public/invoices/{'a' * 43}").status_code == 404
+
+
+def test_public_pdf_checks_bearer_link_and_returns_download(settings: Settings) -> None:
+    record = invoice_record()
+    token = invoice_token(record["id"], record["share_nonce"], settings)
+    record["share_token_hash"] = invoice_token_hash(token, settings)
+    client = public_client(settings, record)
+    result = client.get(f"/public/invoices/{token}/pdf")
+    assert result.status_code == 200
+    assert result.content.startswith(b"%PDF")
+    assert result.headers["content-type"] == "application/pdf"
+    assert result.headers["cache-control"] == "no-store"
+    record["share_active"] = False
+    assert client.get(f"/public/invoices/{token}/pdf").status_code == 404
+
+
+def test_invoice_legacy_url_works_when_former_key_is_configured(settings: Settings) -> None:
+    from pydantic import SecretStr
+    from app.invoice_sharing import legacy_invoice_token
+    from app.security import hash_public_token
+    record = invoice_record()
+    token = legacy_invoice_token(record["id"], record["share_nonce"], "old-key")
+    record["share_token_hash"] = hash_public_token(f"invoice:{token}", "old-key")
+    changed = settings.model_copy(update={"legacy_public_link_keys": SecretStr("old-key")})
+    assert public_client(changed, record).get(f"/public/invoices/{token}").status_code == 200
+
+
+@pytest.mark.parametrize("initial", ["unpublished", "unrecoverable-legacy", "v2"])
+def test_share_creates_or_recovers_working_link_without_missing_schema_column(settings, monkeypatch, initial):
+    from uuid import UUID
+    from starlette.requests import Request
+    from app.routers import invoices
+    row = invoice_record()
+    if initial == "unpublished":
+        row.update(share_nonce=None, share_token_hash=None, share_active=False)
+    elif initial == "v2":
+        row["share_token_hash"] = invoice_token_hash(invoice_token(row["id"], row["share_nonce"], settings), settings)
+    original_nonce = row["share_nonce"]
+
+    class PublicationQuery(Query):
+        def is_(self, key, value):
+            assert value == "null"
+            return self.eq(key, None)
+
+        def select(self, selection):
+            assert "share_token_version" not in selection
+            return self
+
+    class Service:
+        def table(self, name):
+            assert name == "invoices"
+            return PublicationQuery([row])
+
+        def rpc(self, name, fields):
+            assert name == "publish_invoice_link"
+            assert fields["p_expires_at"] is None
+            if fields["p_rotate"] or not row["share_active"] or not row.get("share_nonce"):
+                row.update(share_nonce=fields["p_nonce"], share_token_hash=fields["p_token_hash"], share_active=True)
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=[deepcopy(row)]))
+
+    monkeypatch.setattr(invoices, "audit", lambda *args: None)
+    gateway = SimpleNamespace(service=Service())
+    request = Request({"type": "http", "headers": [], "method": "POST", "path": "/share"})
+    result = invoices.share_invoice(UUID(row["id"]), request, InvoiceShareRequest(expires_at=None), None, settings, gateway)
+    assert result["token"].startswith("v2_")
+    assert invoice_token_hash(result["token"], settings) == row["share_token_hash"]
+    again = invoices.share_invoice(UUID(row["id"]), request, None, None, settings, gateway)
+    assert result["share_url"] == again["share_url"]
+    if initial == "v2":
+        assert row["share_nonce"] == original_nonce

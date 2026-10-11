@@ -96,7 +96,7 @@ export function AgreementSigning() {
   if (error || !agreement) return <div className="sign-page sign-page--center"><Brand /><ErrorState title="Agreement unavailable" message={error} onRetry={load} /><Link className="text-link" to="/"><ArrowLeft size={15} /> Return to Hich Studio</Link></div>
 
   const clientName = getClientName(agreement.client, agreement.client_name)
-  const isExpired = agreement.status === 'expired' || Boolean(agreement.expires_at && new Date(agreement.expires_at) < new Date() && agreement.status !== 'signed')
+  const isExpired = agreement.status === 'expired'
   const terms = Array.isArray(agreement.terms)
     ? agreement.terms
     : typeof agreement.terms === 'string'
@@ -121,7 +121,7 @@ export function AgreementSigning() {
     {showCommercial && Number(agreement.amount) > 0 && <div><span>Project budget</span><strong>{formatCurrency(Number(agreement.amount), agreement.currency || 'LKR')}</strong></div>}
     <div><span>Project</span><strong>{agreement.project_title || agreement.title}</strong></div>
     <div><span>Reference</span><strong>{agreement.reference || `#${agreement.id}`}</strong></div>
-    <div><span>Valid until</span><strong>{formatDate(agreement.expires_at)}</strong></div>
+    <div><span>Client access</span><strong>No expiry date</strong></div>
   </div>
   const agreementValue = <>
     {showCommercial ? <>

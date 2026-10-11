@@ -8,10 +8,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, SearchInput, Select, StatusPill, Textarea } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, deletionPin } from '../../lib/api'
-import { invoiceMessage, renewalMessage } from '../../lib/messages'
+import { invoiceMessage, receiptMessage, renewalMessage } from '../../lib/messages'
 import { addPaymentPhase } from '../../lib/paymentPlan'
 import { formatCurrency, formatDate, getClientName } from '../../lib/format'
-import type { Client, Invoice, InvoiceVersion } from '../../lib/types'
+import type { Client, Invoice, InvoiceVersion, PaymentRecord } from '../../lib/types'
 
 type Payment = NonNullable<Invoice['payments']>[number]
 type InvoiceForm = Partial<Invoice> & { payments: Payment[] }
@@ -40,6 +40,7 @@ export function InvoicesPage() {
   const [query, setQuery] = useState(params.get('search') || '')
   useEffect(() => setQuery(params.get('search') || ''), [params])
   const [shared, setShared] = useState<Invoice | null>(null)
+  const [sharedReceipt, setSharedReceipt] = useState<PaymentRecord | null>(null)
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
   const [busyAction, setBusyAction] = useState<{ invoiceId: string; action: InvoiceAction } | null>(null)
   const [history, setHistory] = useState<InvoiceVersion[] | null>(null)
@@ -239,16 +240,16 @@ export function InvoicesPage() {
     finally { setDeleteBusy(false) }
   }
 
-  const share = async (invoice: Invoice, rotate = false) => {
+  const share = async (invoice: Invoice, rotate = false, receipt?: PaymentRecord) => {
     const invoiceId = String(invoice.id)
     setBusyAction({ invoiceId, action: 'share' })
     try {
-      // Invoice links are intentionally non-expiring. Sending null also clears any expiry saved by an older version.
-      const result = await api.invoices.share(invoice.id, { rotate, expires_at: null })
+      const result = await api.invoices.share(invoice.id, { rotate })
       const updated = { ...invoice, ...result.invoice, share_url: result.share_url, share_expires_at: undefined }
       setShared(updated)
+      setSharedReceipt(receipt || null)
       setInvoices(current => current.map(item => item.id === invoice.id ? updated : item))
-    } catch (e) { toast(e instanceof Error ? e.message : 'Could not create link.', 'error') }
+    } catch (e) { toast(receipt ? 'Payment is saved. The link could not be prepared; use Share & send message to retry.' : e instanceof Error ? e.message : 'Could not create link.', 'error') }
     finally { setBusyAction(current => current?.invoiceId === invoiceId && current.action === 'share' ? null : current) }
   }
   const revoke = async () => {
@@ -377,8 +378,11 @@ export function InvoicesPage() {
       </form>
     </Modal>
     <RenewalInvoiceForm source={renewalSource} onClose={() => setRenewalSource(null)} onSaved={(saved, record) => { setInvoices(current => current.some(invoice => invoice.id === saved.id) ? current.map(invoice => invoice.id === saved.id ? saved : invoice) : [saved, ...current]); if (record) setPaymentInvoice(saved); else void share(saved) }} />
-    <InvoicePayments invoice={paymentInvoice} onClose={() => setPaymentInvoice(null)} onSaved={saved => { setInvoices(current => current.map(invoice => invoice.id === saved.id ? saved : invoice)); void share(saved) }} />
-    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title={shared?.invoice_kind === 'renewal' ? shared.status === 'paid' ? 'Send paid renewal invoice' : 'Send renewal invoice' : 'Share invoice'} description={shared?.invoice_kind === 'renewal' ? 'This invoice includes only the renewal services and their payments.' : 'The non-expiring client link always displays the latest saved invoice.'}>{shared?.share_url && <><SharePanel url={shared.share_url} title={invoiceMessage(shared).subject} phone={shared.phone || clientFor(shared, clients)?.phone} email={shared.client_email || clientFor(shared, clients)?.email} message={invoiceMessage(shared).body} /><div className="document-toolbar"><Button variant="secondary" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'share'} onClick={() => void share(shared, true)}>Replace link</Button><Button variant="danger" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'revoke'} onClick={() => void revoke()}>Revoke link</Button></div><p className="field-hint">Invoice links do not expire. Replacing or revoking a link immediately disables the previous link.</p></>}</Modal>
+    <InvoicePayments invoice={paymentInvoice} onClose={() => setPaymentInvoice(null)} onPlanSaved={saved => setInvoices(current => current.map(invoice => invoice.id === saved.id ? saved : invoice))} onSaved={(saved, receipt) => { setInvoices(current => current.map(invoice => invoice.id === saved.id ? saved : invoice)); void share(saved, false, receipt); if (saved.invoice_kind === 'renewal') void load() }} />
+    <Modal open={Boolean(shared)} onClose={() => setShared(null)} title={sharedReceipt ? 'Send payment receipt' : shared?.invoice_kind === 'renewal' ? shared.status === 'paid' ? 'Send paid renewal invoice' : 'Send renewal invoice' : 'Share invoice'} description="The client link has no expiry date and displays the latest saved invoice.">{shared?.share_url && <>
+      <SharePanel url={shared.share_url} title={(sharedReceipt ? receiptMessage(shared, sharedReceipt) : invoiceMessage(shared)).subject} phone={shared.phone || clientFor(shared, clients)?.phone} email={shared.client_email || clientFor(shared, clients)?.email} message={(sharedReceipt ? receiptMessage(shared, sharedReceipt) : invoiceMessage(shared)).body} />
+      <div className="document-toolbar"><Button variant="secondary" icon={Download} onClick={() => void api.invoices.pdf(shared.id, shared.reference).catch(error => toast(error.message, 'error'))}>Download PDF</Button><Button variant="secondary" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'share'} onClick={() => void share(shared, true, sharedReceipt || undefined)}>Replace link</Button><Button variant="danger" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'revoke'} onClick={() => void revoke()}>Revoke link</Button></div><p className="field-hint">Invoice links do not expire. Replacing or revoking a link immediately disables the previous link.</p>
+    </>}</Modal>
     <Modal open={Boolean(renewal)} onClose={() => setRenewal(null)} title="Renewal invoice & client message" description="Review the saved renewal amount, prepare the invoice, and contact the client from one place." size="lg">{renewal && <>
       <dl className="document-summary renewal-summary"><div><dt>Client</dt><dd>{getClientName(renewal.client, renewal.client_name || clientFor(renewal, clients)?.name)}</dd></div><div><dt>Project</dt><dd>{renewal.project_title || 'Domain & hosting services'}</dd></div><div><dt>Renewal amount</dt><dd>{formatCurrency(Number(renewal.renewal_amount || 0), renewal.renewal_currency || 'LKR')}</dd></div><div><dt>Service expiry / renewal date</dt><dd>{formatDate(renewal.renewal_due_date)}</dd></div></dl>
       <div className="document-toolbar"><Button onClick={() => void prepareRenewal(renewal)}>Create / open renewal invoice</Button><Link className="button button--secondary" to={`/admin/clients?client=${encodeURIComponent(String(renewal.client_id || ''))}`}>Open client profile</Link></div>

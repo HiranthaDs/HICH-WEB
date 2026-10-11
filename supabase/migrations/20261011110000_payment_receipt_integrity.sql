@@ -8,6 +8,13 @@ alter table public.payments
 
 create sequence if not exists public.payment_receipt_number_seq;
 
+-- Metadata backfill must not revalidate old/void receipts or rewrite their
+-- financial status and revision history. DDL locks keep other writers out;
+-- these triggers are restored in the same transaction before normal writes.
+alter table public.payments disable trigger guard_invoice_payment_write;
+alter table public.payments disable trigger recalculate_invoice_after_payment;
+alter table public.payments disable trigger zz_capture_payment_invoice_version;
+
 -- Existing receipts predate request idempotency. Their immutable payment id is
 -- a safe one-time key, while human-facing receipt numbers use the same global
 -- sequence as all future receipts.
@@ -18,6 +25,10 @@ set idempotency_key = coalesce(idempotency_key, id),
         'RCT-' || lpad(nextval('public.payment_receipt_number_seq')::text, 8, '0')
     )
 where idempotency_key is null or receipt_number is null;
+
+alter table public.payments enable trigger guard_invoice_payment_write;
+alter table public.payments enable trigger recalculate_invoice_after_payment;
+alter table public.payments enable trigger zz_capture_payment_invoice_version;
 
 alter table public.payments
     alter column idempotency_key set not null,
@@ -62,6 +73,8 @@ for each row execute function public.ensure_payment_identity();
 -- Enforce ownership declaratively as well as in the validation trigger. A
 -- milestone with receipts cannot be deleted and a receipt cannot point to a
 -- milestone belonging to another invoice.
+alter table public.payments
+    drop constraint if exists payments_milestone_invoice_fkey;
 alter table public.invoice_milestones
     drop constraint if exists invoice_milestones_id_invoice_id_key;
 alter table public.invoice_milestones

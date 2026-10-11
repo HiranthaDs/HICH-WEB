@@ -33,6 +33,7 @@ from ..models import (
 from ..security import client_ip, enforce_rate_limit, is_stable_public_token
 from ..supabase_client import SupabaseGateway, get_supabase
 from ..income import COLOMBO
+from ..pdf import invoice_pdf
 
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -473,22 +474,23 @@ def share_invoice(
     try:
         current = first(
             gateway.service.table("invoices")
-            .select("id,status,deleted_at,share_active,share_nonce,share_token_hash,share_token_version")
+            .select("id,status,deleted_at,share_active,share_nonce,share_token_hash")
             .eq("id", str(invoice_id)).is_("deleted_at", "null").limit(1).execute(),
             "Invoice",
         )
         token: str | None = None
         if current.get("share_active") and current.get("share_nonce") and current.get("share_token_hash") and not options.rotate:
-            if current.get("share_token_version") == 2:
-                candidate = invoice_token(str(invoice_id), str(current["share_nonce"]), settings)
-                if hmac.compare_digest(invoice_token_hash(candidate, settings), str(current["share_token_hash"])):
-                    token = candidate
+            candidate = invoice_token(str(invoice_id), str(current["share_nonce"]), settings)
+            if hmac.compare_digest(invoice_token_hash(candidate, settings), str(current["share_token_hash"])):
+                token = candidate
             else:
                 token = recover_legacy_invoice_token(current, settings)
 
-        replace_link = options.rotate or token is None
-        nonce = str(uuid4()) if replace_link else str(current["share_nonce"])
-        token = invoice_token(str(invoice_id), nonce, settings) if replace_link else token
+        replace_link = options.rotate or (bool(current.get("share_active")) and token is None)
+        nonce = str(uuid4()) if replace_link else str(current.get("share_nonce") or "")
+        if not current.get("share_nonce"):
+            nonce = str(uuid4())
+        token = invoice_token(str(invoice_id), nonce, settings) if token is None or replace_link else token
         record = first(gateway.service.rpc("publish_invoice_link", {
             "p_invoice_id": str(invoice_id), "p_nonce": nonce,
             "p_token_hash": invoice_token_hash(token, settings), "p_rotate": replace_link,
@@ -499,7 +501,8 @@ def share_invoice(
         # A concurrent publisher or a legacy row with an unavailable former key
         # must self-heal to v2 instead of surfacing a signing-key error.
         if not hmac.compare_digest(invoice_token_hash(token, settings), str(record["share_token_hash"])):
-            recovered = None if record.get("share_token_version") == 2 else recover_legacy_invoice_token(record, settings)
+            candidate = invoice_token(str(invoice_id), str(record["share_nonce"]), settings)
+            recovered = candidate if hmac.compare_digest(invoice_token_hash(candidate, settings), str(record["share_token_hash"])) else recover_legacy_invoice_token(record, settings)
             if recovered:
                 token = recovered
             else:
@@ -533,7 +536,7 @@ def revoke_invoice_share(
 ) -> Response:
     try:
         first(gateway.service.table("invoices").update({
-            "share_active": False, "share_nonce": None, "share_token_hash": None, "share_token_version": None,
+            "share_active": False, "share_nonce": None, "share_token_hash": None,
         }).eq("id", str(invoice_id)).execute(), "Invoice")
         audit(gateway.service, request, settings, "share_revoked", "invoice", invoice_id, principal)
         return Response(status_code=204)
@@ -565,6 +568,24 @@ def invoice_versions(
         raise db_failure(exc, "load invoice history") from exc
 
 
+def _pdf_response(invoice: dict[str, Any]) -> Response:
+    filename = re.sub(r"[^A-Za-z0-9_-]", "-", str(invoice.get("reference") or "invoice"))[:100]
+    return Response(invoice_pdf(invoice), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{filename}.pdf"',
+        "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Referrer-Policy": "no-referrer",
+    })
+
+
+@router.get("/{invoice_id}/pdf")
+def download_invoice_pdf(
+    invoice_id: UUID,
+    _: Principal = Depends(current_admin),
+    gateway: SupabaseGateway = Depends(get_supabase),
+) -> Response:
+    return _pdf_response(public_invoice_shape(_get(invoice_id, gateway)))
+
+
 @public_router.get("/{token}")
 def get_public_invoice(
     token: str,
@@ -577,23 +598,26 @@ def get_public_invoice(
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     enforce_rate_limit(f"public-invoice:{client_ip(request, settings.trust_proxy_headers)}", 120, 60)
-    if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+    if not is_stable_public_token(token) and not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
         raise HTTPException(status_code=404, detail="Invoice link is unavailable")
     try:
         found = rows(gateway.service.table("invoices").select(INVOICE_SELECT)
-                     .eq("share_token_hash", invoice_token_hash(token, settings))
+                     .in_("share_token_hash", list(invoice_token_hash_candidates(token, settings)))
                      .eq("share_active", True).limit(1).execute())
         if not found or found[0].get("deleted_at") or found[0].get("status") in {"draft", "void"}:
             raise HTTPException(status_code=404, detail="Invoice link is unavailable")
         record = found[0]
-        expires_at = record.get("share_expires_at")
-        if expires_at:
-            expiry = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
-            expiry = expiry.replace(tzinfo=timezone.utc) if expiry.tzinfo is None else expiry
-            if expiry <= datetime.now(timezone.utc):
-                raise HTTPException(status_code=410, detail="This invoice link has expired. Please request a new link.")
         return {"invoice": public_invoice_shape(_shape(record))}
     except HTTPException:
         raise
     except Exception as exc:
         raise db_failure(exc, "load the invoice") from exc
+
+
+@public_router.get("/{token}/pdf")
+def download_public_invoice_pdf(
+    token: str, request: Request, response: Response,
+    settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase),
+) -> Response:
+    invoice = get_public_invoice(token, request, response, settings, gateway)["invoice"]
+    return _pdf_response(invoice)

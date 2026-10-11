@@ -7,9 +7,10 @@
     "Staff invited by email with no admin-selected password",
     "Admin-selected temporary password is submitted and login credentials are shown once",
     "Visible agreement delete accepts PIN and stays removed after reload, including signed agreements",
+    "Income calendar renders the seven-day month grid with receipt and renewal events",
     "Incorrect deletion PIN leaves data unchanged; correct PIN deletes and stays removed after reload",
     "Settings, agreement, invoice, client profile and income fit 320 / 390 px"
   ],
   "errors": [],
-  "interceptedWrites": 11
+  "interceptedWrites": 12
 }

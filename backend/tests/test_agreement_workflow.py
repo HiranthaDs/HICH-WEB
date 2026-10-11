@@ -259,6 +259,29 @@ def test_agreement_without_budget_can_be_signed_and_rendered(settings):
     assert gateway.storage.uploaded[gateway.row["signed_pdf_storage_path"]].startswith(b"%PDF")
 
 
+def test_permanent_v2_agreement_signs_after_key_rotation_and_old_deadline(settings):
+    from pydantic import SecretStr
+    row = record(settings) | {"share_nonce": str(uuid4()), "expires_at": "2000-01-01T00:00:00Z"}
+    token = agreements._agreement_token(row["public_id"], row["share_nonce"], settings)
+    row["access_token_hash"] = agreements._token_hash(token, settings)
+    row["content_sha256"] = agreements._document_digest(row)
+    changed = settings.model_copy(update={"token_hash_pepper": SecretStr("new-pepper"), "supabase_secret_key": SecretStr("new-key")})
+    gateway = FakeGateway(row)
+    assert agreements._recover_token(row, changed) == token
+    result = agreements.sign_agreement(token, signing_payload(row), request(), changed, gateway)["agreement"]
+    assert result["signed"] is True
+    assert gateway.row["signed_snapshot"]["expires_at"] == "2000-01-01T00:00:00Z"
+    assert result["expires_at"] is None
+
+
+def test_legacy_agreement_lookup_accepts_configured_former_pepper(settings):
+    from pydantic import SecretStr
+    row = record(settings)
+    row["access_token_hash"] = hash_public_token(TOKEN, "former-pepper")
+    changed = settings.model_copy(update={"token_hash_pepper": SecretStr("new-pepper"), "legacy_public_link_keys": SecretStr("former-pepper")})
+    assert agreements._agreement_by_token(TOKEN, changed, FakeGateway(row))["id"] == row["id"]
+
+
 def test_sign_records_snapshot_role_consent_and_pdf_without_later_crm_changes(settings):
     row = record(settings)
     gateway = FakeGateway(row)

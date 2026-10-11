@@ -1,11 +1,25 @@
 import { formatCurrency, formatDate, getClientName } from './format'
-import type { Agreement, Invoice } from './types'
+import type { Agreement, Invoice, PaymentRecord } from './types'
 
 export type ClientMessage = { subject: string; body: string }
 const greeting = (name?: string) => `Hello ${name || 'there'},`
 const closing = 'Thank you for choosing Hich Web.\nHich Web | Client Services'
 const money = (amount: unknown, currency?: string) => formatCurrency(Number(amount || 0), currency || 'LKR')
 const bullet = (label: string, value: string) => `• ${label}: ${value}`
+
+export function receiptMessage(invoice: Invoice, receipt: PaymentRecord): ClientMessage {
+  const balance = Math.max(0, Number(invoice.amount) - Number(invoice.paid_amount || 0))
+  return {
+    subject: `Payment receipt ${receipt.receipt_number || invoice.reference} | Hich Web`,
+    body: [greeting(getClientName(invoice.client, invoice.client_name)),
+      `Thank you. We have recorded your payment for ${invoice.project_title || 'your invoice'}.`,
+      `PAYMENT RECEIPT\nReceipt: ${receipt.receipt_number || receipt.reference || 'Recorded payment'}\nInvoice: ${invoice.reference}\nAmount received: ${money(receipt.amount, receipt.currency)}\nReceived: ${receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at)}\nMethod: ${receipt.method || 'Payment'}${receipt.reference ? `\nTransfer reference: ${receipt.reference}` : ''}\nRemaining balance: ${money(balance, invoice.currency)}`,
+      balance === 0 ? 'This invoice is paid in full. Please retain this receipt for your records.' : '',
+      invoice.share_url ? `OPEN SECURE INVOICE\n${invoice.share_url}` : '',
+      invoice.invoice_kind === 'renewal' ? 'Renewal completion is confirmed separately after provider processing.' : '', closing,
+    ].filter(Boolean).join('\n\n'),
+  }
+}
 
 export function invoiceMessage(invoice: Invoice): ClientMessage {
   const paid = Number(invoice.paid_amount || 0), total = Number(invoice.amount || 0)
@@ -104,7 +118,7 @@ export function agreementMessage(agreement: Agreement): ClientMessage {
   return { subject: `Hich Web | Agreement ready for review | ${agreement.project_title || agreement.title}`, body: [
     greeting(getClientName(agreement.client, agreement.client_name)),
     `Your agreement for ${agreement.project_title || 'your project'} is ready for your review and signature.`,
-    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}${agreement.expires_at ? `\nPlease sign by: ${formatDate(agreement.expires_at)}` : ''}`,
+    `AGREEMENT SUMMARY\nReference: ${agreement.reference || agreement.title}\nProject: ${agreement.project_title || agreement.title}`,
     commercialSummary,
     showCommercial
       ? 'Please review the complete scope and terms, together with any commercial details listed above. Blank optional details are not included as agreed charges. If anything needs correction, reply before signing and we will update it.'

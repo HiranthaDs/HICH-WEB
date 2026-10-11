@@ -52,9 +52,9 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
         payload = { invoice: renewal };
       }
       else if (endpoint === '/invoices/renewal-1/payments') {
-        renewal.payment_records.push({ id: `renewal-receipt-${renewal.payment_records.length}`, ...data });
+        renewal.payment_records.push({ id: `renewal-receipt-${renewal.payment_records.length}`, receipt_number: `RCT-0000000${renewal.payment_records.length + 1}`, ...data });
         renewal.paid_amount += data.amount; renewal.balance_due = renewal.amount - renewal.paid_amount;
-        renewal.status = renewal.balance_due ? 'partial' : 'paid'; const phase = renewal.payments.find(phase => phase.id === data.milestone_id); if (phase) { phase.paid_amount += data.amount; phase.is_paid = phase.paid_amount >= phase.amount; } payload = { invoice: renewal };
+        renewal.status = renewal.balance_due ? 'partial' : 'paid'; const phase = renewal.payments.find(phase => phase.id === data.milestone_id); if (phase) { phase.paid_amount += data.amount; phase.is_paid = phase.paid_amount >= phase.amount; } payload = { invoice: renewal, payment: renewal.payment_records.at(-1) };
       }
       else if (endpoint.endsWith('/share')) payload = { invoice: endpoint.includes('renewal-1') ? renewal : source, share_url: base + (endpoint.includes('renewal-1') ? '/invoice/renewal-test' : '/invoice/source-test') };
       else if (endpoint === '/invoices/renewal-1') payload = { invoice: renewal };
@@ -114,14 +114,14 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await page.click('.renewal-fee-options label:nth-child(1) input'); await page.click('.renewal-fee-options label:nth-child(2) input');
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); await noOverflow(`Renewal form ${width}`); }
     await page.setViewport({ width: 1440, height: 1000 }); await click('Create & record payment'); await page.waitForSelector('#receipt-form');
-    await fill('Payment amount (LKR)', '5000'); await fill('Transfer / receipt reference', 'RENEWAL-PARTIAL'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
+    await fill('Payment amount (LKR)', '5000'); await fill('Transfer / receipt reference', 'RENEWAL-PARTIAL'); await click('Save payment & prepare receipt'); await page.waitForSelector('.share-panel textarea');
     assert.equal(renewal.amount, 14160); assert.equal(renewal.status, 'partial');
     assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('9,160'));
     await go('/admin/invoices'); await invoiceAction('REN-TEST', 'Add payment'); await page.waitForSelector('#receipt-form');
-    await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment & prepare message'); await page.waitForSelector('.share-panel textarea');
+    await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment & prepare receipt'); await page.waitForSelector('.share-panel textarea');
     const message = await page.$eval('.share-panel textarea', e => e.value);
     assert.equal(renewal.status, 'paid'); assert.equal(renewal.payment_records.length, 2);
-    assert.ok(message.includes('paid in full') && message.includes('18%, once'));
+    assert.ok(message.includes('RCT-00000002') && message.replace(/\s/g, ' ').includes('Remaining balance: LKR 0.00'));
     assert.ok(!message.includes('100,000') && !message.includes('9,000') && !message.includes('GBP'));
     await page.screenshot({ path: path.join(output, 'paid-renewal-message.png'), fullPage: true });
     checks.push('Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message');

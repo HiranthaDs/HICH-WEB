@@ -51,7 +51,7 @@ export function SettingsPage() {
   const signOut = async () => { await logout(); navigate('/admin/login', { replace: true }) }
 
   return <div className="admin-page settings-page">
-    <PageHeader eyebrow="Workspace" title="Settings" description="Account, deployment and integration details for this Hich Studio workspace." />
+    <PageHeader eyebrow="Workspace" title="Settings" description="Account, deployment and integration details for this Hich Studio workspace." action={<span className="status-pill">V 2.0.1</span>} />
     <AccountSettings />
     <div className="settings-grid">
       <section className="panel settings-profile"><header><span><UserRound size={19} /></span><div><h2>Administrator profile</h2><p>Your identity comes from the secure backend session.</p></div></header><div className="settings-profile__person"><Avatar name={user?.name || user?.email} image={user?.avatar_url} size="lg" /><div><strong>{user?.name || 'Hich administrator'}</strong><span>{user?.email}</span><StatusPill status={user?.role || 'admin'} /></div></div><dl><div><dt>User ID</dt><dd>{String(user?.id || '—')}</dd></div><div><dt>Access level</dt><dd>{titleCase(user?.role || 'administrator')}</dd></div><div><dt>Authentication</dt><dd>Secure cookie session</dd></div></dl></section>
