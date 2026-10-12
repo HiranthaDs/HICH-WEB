@@ -1694,6 +1694,40 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .share-panel .document-toolbar { width: 100%; flex-wrap: wrap; }
   .contact-actions { width: 100%; }
   .contact-actions .button { flex: 1 1 auto; }
+  .sign-page:not(.public-invoice) { padding-bottom: max(22px, env(safe-area-inset-bottom)); background: linear-gradient(180deg,#f2f4ff 0,#f7f8fc 280px); }
+  .sign-page:not(.public-invoice) .sign-header { position: sticky; z-index: 20; top: 0; min-height: 64px; padding: 7px 14px; box-shadow: 0 5px 22px rgba(24,37,88,.05); }
+  .sign-page:not(.public-invoice) .sign-header > span { padding: 8px 10px; font-size: 8px; letter-spacing: .06em; }
+  .sign-page:not(.public-invoice) .sign-progress { width: calc(100% - 24px); margin: 13px auto; padding: 12px 13px; border: 1px solid rgba(218,222,241,.9); border-radius: 14px; background: rgba(255,255,255,.86); box-shadow: 0 5px 18px rgba(28,40,96,.04); font-size: 8px; letter-spacing: .05em; }
+  .sign-page:not(.public-invoice) .sign-progress i { margin-inline: 7px; }
+  .sign-page:not(.public-invoice) .sign-document-tools { width: calc(100% - 24px); display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; margin: 0 auto 13px; padding: 10px; border: 1px solid rgba(218,222,241,.9); border-radius: 15px; background: rgba(255,255,255,.9); box-shadow: 0 7px 22px rgba(28,40,96,.05); }
+  .sign-page:not(.public-invoice) .sign-document-tools .button { width: 100%; min-width: 0; padding-inline: 10px; font-size: 10px; }
+  .sign-page:not(.public-invoice) .sign-document-tools > span { grid-column: 1 / -1; width: auto; margin: 0; text-align: center; font-size: 9px; }
+  .sign-page:not(.public-invoice) .sign-layout { width: calc(100% - 24px); gap: 14px; }
+  .sign-page:not(.public-invoice) .agreement-document,
+  .sign-page:not(.public-invoice) .sign-panel__sticky { border-radius: 19px; box-shadow: 0 10px 30px rgba(30,43,92,.07); }
+  .sign-page:not(.public-invoice) .agreement-document { padding: 21px 18px; }
+  .sign-page:not(.public-invoice) .agreement-document__header { flex-direction: row; align-items: flex-start; gap: 10px; padding-bottom: 20px; }
+  .sign-page:not(.public-invoice) .agreement-document__header > div { grid-template-columns: 40px minmax(0,1fr); column-gap: 11px; }
+  .sign-page:not(.public-invoice) .agreement-document__header .document-icon { width: 40px; height: 40px; border-radius: 11px; }
+  .sign-page:not(.public-invoice) .agreement-document__header h1 { font-size: clamp(20px,6.5vw,27px); line-height: 1.18; }
+  .sign-page:not(.public-invoice) .agreement-document__header > .status { flex: 0 0 auto; }
+  .sign-page:not(.public-invoice) .agreement-meta { gap: 15px 10px; padding: 19px 0; }
+  .sign-page:not(.public-invoice) .agreement-meta > div { padding: 11px; border-radius: 11px; background: #f7f8fc; }
+  .sign-page:not(.public-invoice) .agreement-meta span { margin-bottom: 6px; font-size: 8px; }
+  .sign-page:not(.public-invoice) .agreement-meta strong { font-size: 11px; line-height: 1.45; }
+  .sign-page:not(.public-invoice) .agreement-terms-preview { margin-top: 19px; padding: 17px; }
+  .sign-page:not(.public-invoice) .agreement-terms-preview h2 { font-size: 16px; }
+  .sign-page:not(.public-invoice) .agreement-terms-preview p { font-size: 12px; line-height: 1.7; }
+  .sign-page:not(.public-invoice) .sign-panel { scroll-margin-top: 77px; }
+  .sign-page:not(.public-invoice) .sign-panel__sticky { padding: 20px 18px; border-top-width: 4px; }
+  .sign-page:not(.public-invoice) .sign-panel__heading { margin-bottom: 18px; }
+  .sign-page:not(.public-invoice) .sign-panel__heading h2 { font-size: 20px; }
+  .sign-page:not(.public-invoice) .signature-pad { height: 170px; }
+  .sign-page:not(.public-invoice) .consent-check { margin-block: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: #f8f9ff; }
+  .sign-page:not(.public-invoice) .consent-check > span { font-size: 11.5px; line-height: 1.65; }
+  .sign-page:not(.public-invoice) .sign-submit { min-height: 52px; font-size: 13px; }
+  .sign-page:not(.public-invoice) .sign-panel__security { line-height: 1.5; text-align: center; }
+  .sign-page:not(.public-invoice) .sign-footer { flex-direction: column; align-items: center; gap: 5px; margin-top: 16px; text-align: center; }
 }
 @media (max-width: 500px) {
   .modal-shell { padding: env(safe-area-inset-top) 0 0; align-items: end; }
@@ -1706,6 +1740,11 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .milestone-row > .field { grid-column: 1 / -1; }
   .field__label { flex-wrap: wrap; }
   .agreement-meta { grid-template-columns: minmax(0, 1fr); }
+  .sign-page:not(.public-invoice) .agreement-document__header { flex-wrap: wrap; }
+  .sign-page:not(.public-invoice) .agreement-document__header > .status { margin-left: 51px; }
+  .sign-page:not(.public-invoice) .agreement-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sign-page:not(.public-invoice) .agreement-meta > div:first-child,
+  .sign-page:not(.public-invoice) .agreement-meta > div:nth-child(4) { grid-column: 1 / -1; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .modal-shell { padding: 6px; }

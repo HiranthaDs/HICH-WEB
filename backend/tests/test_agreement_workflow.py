@@ -289,6 +289,23 @@ def test_agreement_without_budget_can_be_signed_and_rendered(settings):
     assert gateway.storage.uploaded[gateway.row["signed_pdf_storage_path"]].startswith(b"%PDF")
 
 
+def test_scope_only_agreement_signs_on_legacy_schema_without_exposing_placeholder(settings):
+    row = record(settings) | {
+        "amount": None,
+        "terms": {"Project-specific commercial schedule": f"{agreements.SCOPE_ONLY_MARKER} Prices are issued separately."},
+    }
+    row.pop("commercial_details_visible")
+    row["content_sha256"] = agreements._document_digest(row)
+    gateway = FakeGateway(row)
+
+    public = agreements.sign_agreement(TOKEN, signing_payload(row), request(), settings, gateway)["agreement"]
+
+    assert gateway.row["signed_snapshot"]["amount"] == "0.00"
+    assert gateway.row["signed_snapshot"][agreements.LEGACY_AMOUNT_PLACEHOLDER_KEY] is True
+    assert public["commercial_details_visible"] is False
+    assert public["amount"] is None
+
+
 def test_permanent_v2_agreement_signs_after_key_rotation_and_old_deadline(settings):
     from pydantic import SecretStr
     row = record(settings) | {"share_nonce": str(uuid4()), "expires_at": "2000-01-01T00:00:00Z"}

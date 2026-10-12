@@ -16,6 +16,11 @@ from .config import Settings
 from .models import InvoiceCreate, InvoiceUpdate
 from .security import hash_public_token, is_stable_public_token, stable_public_token, stable_public_token_hash
 
+DEFAULT_PAYMENT_INSTRUCTIONS = """Account Name: Hich Web
+Account Number: 119020299485
+Bank: HNB (Hatton National Bank)
+Branch: Kandana"""
+
 
 class RenewalItem(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -143,6 +148,7 @@ def public_invoice_shape(record: dict[str, Any]) -> dict[str, Any]:
         "invoice_kind", "renewal_period_date", "renewal_late_fee",
     )
     public = {key: record.get(key) for key in fields}
+    public["payment_instructions"] = public.get("payment_instructions") or DEFAULT_PAYMENT_INSTRUCTIONS
     client = record.get("clients") or {}
     public["client"] = {key: client.get(key) for key in ("name", "company", "phone")}
     public["client_name"] = client.get("company") or client.get("name") or record.get("client_name")

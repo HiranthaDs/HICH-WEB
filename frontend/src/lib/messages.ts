@@ -1,4 +1,5 @@
 import { formatCurrency, formatDate, getClientName } from './format'
+import { DEFAULT_PAYMENT_INSTRUCTIONS } from './paymentInstructions'
 import type { Agreement, Invoice, PaymentRecord } from './types'
 
 export type ClientMessage = { subject: string; body: string }
@@ -24,6 +25,7 @@ export function receiptMessage(invoice: Invoice, receipt: PaymentRecord): Client
 export function invoiceMessage(invoice: Invoice): ClientMessage {
   const paid = Number(invoice.paid_amount || 0), total = Number(invoice.amount || 0)
   const balance = Math.max(0, total - paid)
+  const paymentInstructions = invoice.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
   if (invoice.invoice_kind === 'renewal') {
     const services = (invoice.renewal_items || []).map(item => bullet(item.description, money(item.amount, invoice.currency))).join('\n')
     const lateFee = Number(invoice.renewal_late_fee || 0)
@@ -39,7 +41,7 @@ export function invoiceMessage(invoice: Invoice): ClientMessage {
       `RENEWAL INVOICE\nReference: ${invoice.reference || 'Renewal invoice'}\nService: ${invoice.project_title || 'Domain & hosting renewal'}${invoice.renewal_period_date ? `\nService period / expiry: ${formatDate(invoice.renewal_period_date)}` : ''}${invoice.issue_date ? `\nIssued: ${formatDate(invoice.issue_date)}` : ''}${balance > 0 && invoice.due_date ? `\nDue: ${formatDate(invoice.due_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPaid: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}`,
       services || lateFee > 0 ? `SERVICE CHARGES\n${[services, lateFee > 0 ? bullet('Agreed late-payment surcharge (18%, once) — itemized late fee', money(lateFee, invoice.currency)) : ''].filter(Boolean).join('\n')}` : '',
       receipts ? `PAYMENTS RECEIVED\n${receipts}` : '',
-      balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
+      balance > 0 ? `PAYMENT DETAILS\n${paymentInstructions}` : '',
       invoice.share_url ? `OPEN SECURE INVOICE\n${invoice.share_url}` : '',
       balance > 0
         ? `Please include reference ${invoice.reference || 'shown above'} with payment and reply with the receipt so we can confirm cleared funds.`
@@ -59,7 +61,7 @@ export function invoiceMessage(invoice: Invoice): ClientMessage {
       : `Thank you—your invoice for ${invoice.project_title || 'your project'} is now paid in full.`,
     `INVOICE SUMMARY\nReference: ${invoice.reference || 'Project invoice'}\nProject: ${invoice.project_title || 'Your project'}${invoice.issue_date ? `\nIssued: ${formatDate(invoice.issue_date)}` : ''}${balance > 0 && invoice.due_date ? `\nDue: ${formatDate(invoice.due_date)}` : ''}\nInvoice total: ${money(total, invoice.currency)}\nPaid: ${money(paid, invoice.currency)}\nBalance due: ${money(balance, invoice.currency)}`,
     phases ? `PAYMENT BREAKDOWN\n${phases}` : '',
-    balance > 0 && invoice.payment_instructions ? `PAYMENT DETAILS\n${invoice.payment_instructions}` : '',
+    balance > 0 ? `PAYMENT DETAILS\n${paymentInstructions}` : '',
     invoice.share_url ? `OPEN SECURE INVOICE\n${invoice.share_url}` : '',
     balance > 0
       ? `Please include reference ${invoice.reference || 'shown above'} with payment and reply with the receipt. If you have already paid, send the payment details and we will update the invoice.`
@@ -80,6 +82,7 @@ export function renewalMessage(renewal: RenewalDetails, lateChargeAccepted = fal
       ? `Agreed late-payment surcharge (18%, once) — itemized late fee: ${money(late, renewal.currency)}\nTotal renewal payment: ${money(base + late, renewal.currency)}`
       : `No late fee is due today. Under the accepted renewal terms, an 18% late-payment surcharge (${money(Math.round(base * 18) / 100, renewal.currency)}) applies once to the unpaid renewal amount only if payment is received after the due date.`
     : 'No late fee has been added to this reminder. If the accepted renewal terms include an 18% late-payment surcharge, we will confirm any applicable itemized late fee before collection.'
+  const paymentInstructions = renewal.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
   return { subject: `Hich Web | ${renewal.reference ? `${renewal.reference} | ` : ''}${expired ? 'Action required: service renewal overdue' : 'Upcoming domain & hosting renewal'}`, body: [
     greeting(renewal.client_name),
     expired
@@ -87,7 +90,7 @@ export function renewalMessage(renewal: RenewalDetails, lateChargeAccepted = fal
       : 'Your domain / hosting renewal is approaching. Please arrange payment by the date below so we can process it and help keep your services active.',
     `RENEWAL DETAILS${renewal.reference ? `\nReference: ${renewal.reference}` : ''}${renewal.project_title ? `\nProject: ${renewal.project_title}` : ''}\nRenewal amount: ${money(base, renewal.currency)}\nDue / service expiry date: ${formatDate(renewal.due_date)}`,
     `LATE-PAYMENT TERMS\n${chargeText}\nAny legally applicable VAT is shown separately on the invoice; a late-payment surcharge is not VAT.`,
-    renewal.payment_instructions ? `PAYMENT DETAILS\n${renewal.payment_instructions}` : '',
+    `PAYMENT DETAILS\n${paymentInstructions}`,
     renewal.share_url ? `VIEW DETAILS\n${renewal.share_url}` : '',
     `Next step: Please include ${renewal.reference ? `reference ${renewal.reference}` : 'your project or invoice reference'} with the payment, then reply with the transfer receipt. Renewal is confirmed after cleared payment and provider confirmation.`,
     expired ? 'After expiry, provider suspension, redemption fees or domain loss may apply. We will quote any recovery cost for approval before proceeding.' : '',

@@ -5,6 +5,7 @@ import { Brand } from '../components/Brand'
 import { Button, ErrorState, LoadingState, StatusPill } from '../components/ui'
 import { api } from '../lib/api'
 import { formatCurrency, formatDate } from '../lib/format'
+import { DEFAULT_PAYMENT_INSTRUCTIONS } from '../lib/paymentInstructions'
 import type { Invoice } from '../lib/types'
 
 export function PublicInvoice() {
@@ -28,6 +29,7 @@ export function PublicInvoice() {
   const balance = Number(invoice?.balance_due ?? Math.max(0, total - paid))
   const isPaid = balance <= 0 || invoice?.status === 'paid'
   const isRenewal = invoice?.invoice_kind === 'renewal'
+  const paymentInstructions = invoice?.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
 
   return <div className="sign-page public-invoice">
     <header className="sign-header invoice-screen-header"><Brand /><span><LockKeyhole size={14} />Secure invoice</span></header>
@@ -73,7 +75,7 @@ export function PublicInvoice() {
         </div>
 
         <div className="invoice-notes-grid">
-          {invoice.payment_instructions && !isPaid && <section><h2>Payment details</h2><p className="preserve-lines">{invoice.payment_instructions}</p><p>Please include <strong>{invoice.reference || 'the invoice reference'}</strong> with your payment.</p></section>}
+          {!isPaid && <section><h2>Payment details</h2><p className="preserve-lines">{paymentInstructions}</p><p>Please include <strong>{invoice.reference || 'the invoice reference'}</strong> with your payment.</p></section>}
           {invoice.customer_note && <section><h2>Note</h2><p>{invoice.customer_note}</p></section>}
         </div>
 

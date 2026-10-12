@@ -51,6 +51,7 @@ DOCUMENT_FIELDS = (
 )
 OPTIONAL_SCHEMA_FIELDS = {"commercial_details_visible", "share_nonce"}
 SCOPE_ONLY_MARKER = "This is a scope-only agreement."
+LEGACY_AMOUNT_PLACEHOLDER_KEY = "amount_not_stated_legacy_compatibility"
 
 
 def _commercial_details_visible(record: dict[str, Any]) -> bool:
@@ -87,6 +88,23 @@ def _document_snapshot(record: dict[str, Any]) -> dict[str, Any]:
         "client_phone": record.get("client_phone") or client.get("phone"),
         "version": record.get("version", 1),
     })
+    return snapshot
+
+
+def _signed_snapshot(record: dict[str, Any]) -> dict[str, Any]:
+    """Build a signing snapshot that remains valid on the pre-optional-price schema.
+
+    Production databases created before the optional-commercial-details migration
+    require a non-null JSON ``amount`` for every signed agreement. Scope-only
+    agreements intentionally have no amount, so the legacy constraint needs an
+    internal placeholder. The explicit visibility flag keeps that placeholder out
+    of every client/admin document view; the marker makes its purpose auditable.
+    """
+    snapshot = _document_snapshot(record)
+    uses_legacy_schema = "commercial_details_visible" not in record
+    if uses_legacy_schema and not snapshot["commercial_details_visible"] and snapshot.get("amount") is None:
+        snapshot["amount"] = "0.00"
+        snapshot[LEGACY_AMOUNT_PLACEHOLDER_KEY] = True
     return snapshot
 
 
@@ -702,7 +720,7 @@ def sign_agreement(
             signature_digest = hashlib.sha256(image).hexdigest()
 
         signed_at = utcnow()
-        signed_snapshot = _document_snapshot(record) | {
+        signed_snapshot = _signed_snapshot(record) | {
             "public_id": record["public_id"],
             "content_sha256": record["content_sha256"],
             "signer_name": payload.signer_name,

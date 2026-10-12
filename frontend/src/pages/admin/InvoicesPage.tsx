@@ -9,6 +9,7 @@ import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Mod
 import { useToast } from '../../context/ToastContext'
 import { api, deletionPin } from '../../lib/api'
 import { invoiceMessage, receiptMessage, renewalMessage } from '../../lib/messages'
+import { DEFAULT_PAYMENT_INSTRUCTIONS } from '../../lib/paymentInstructions'
 import { addPaymentPhase } from '../../lib/paymentPlan'
 import { formatCurrency, formatDate, getClientName } from '../../lib/format'
 import type { Client, Invoice, InvoiceVersion, PaymentRecord } from '../../lib/types'
@@ -17,7 +18,7 @@ type Payment = NonNullable<Invoice['payments']>[number]
 type InvoiceForm = Partial<Invoice> & { payments: Payment[] }
 type InvoiceSection = 'pending' | 'completed' | 'void'
 type InvoiceAction = 'share' | 'payment' | 'history' | 'revoke'
-const blankInvoice: InvoiceForm = { client_id: '', project_title: '', amount: 0, paid_amount: 0, currency: 'LKR', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', payment_method: 'Bank transfer', notes: '', renewal_amount: 0, renewal_currency: 'LKR', renewal_due_date: '', payments: [{ name: 'Advance payment', amount: 0, status: 'Pending', is_paid: false }, { name: 'Final balance', amount: 0, status: 'Pending', is_paid: false }] }
+const blankInvoice: InvoiceForm = { client_id: '', project_title: '', amount: 0, paid_amount: 0, currency: 'LKR', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', payment_method: 'Bank transfer', payment_instructions: DEFAULT_PAYMENT_INSTRUCTIONS, notes: '', renewal_amount: 0, renewal_currency: 'LKR', renewal_due_date: '', payments: [{ name: 'Advance payment', amount: 0, status: 'Pending', is_paid: false }, { name: 'Final balance', amount: 0, status: 'Pending', is_paid: false }] }
 const blankClient: Partial<Client> = { name: '', company: '', email: '', phone: '', address: '', notes: '', status: 'active' }
 
 const clientFor = (invoice: Invoice, clients: Client[]) => clients.find((client) => String(client.id) === String(invoice.client_id)) || (typeof invoice.client === 'object' ? invoice.client : undefined)

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.invoice_sharing import (
+    DEFAULT_PAYMENT_INSTRUCTIONS,
     InvoiceDocumentCreate, InvoiceDocumentUpdate, InvoiceShareRequest,
     invoice_token, invoice_token_hash, public_invoice_shape,
 )
@@ -58,6 +59,12 @@ def test_public_invoice_whitelist_includes_balances_but_no_private_data() -> Non
     assert "private" not in str(public).lower()
     assert "notes" not in public
     assert "email" not in public["client"]
+
+
+def test_default_payment_instructions_are_added_when_invoice_has_none() -> None:
+    public = public_invoice_shape(_shape(invoice_record() | {"payment_instructions": None}))
+    assert public["payment_instructions"] == DEFAULT_PAYMENT_INSTRUCTIONS
+    assert "119020299485" in public["payment_instructions"]
 
 
 def test_link_tokens_survive_secret_rotation_but_change_with_nonce(settings: Settings) -> None:

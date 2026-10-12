@@ -13,6 +13,7 @@ from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
 from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..invoice_sharing import (
+    DEFAULT_PAYMENT_INSTRUCTIONS,
     InvoiceDocumentCreate,
     InvoiceDocumentUpdate,
     InvoiceShareRequest,
@@ -97,6 +98,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         "milestones": milestones,
         "payments": phases,
         "payment_records": payment_records,
+        "payment_instructions": record.get("payment_instructions") or DEFAULT_PAYMENT_INSTRUCTIONS,
     }
 
 
