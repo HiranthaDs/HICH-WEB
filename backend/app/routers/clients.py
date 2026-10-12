@@ -142,7 +142,8 @@ def get_client_profile(
         client = first(gateway.service.table("clients").select("*").is_("deleted_at", "null").eq("id", str(client_id)).limit(1).execute(), "Client")
         invoices = [invoice_shape(record) for record in documents("invoices", INVOICE_SELECT)]
         agreements = documents("agreements", "id,client_id,reference,title,project_title,status,amount,currency,commercial_details_visible,renewal_amount,renewal_currency,renewal_due_date,created_at,updated_at,sent_at,signed_at,signer_name,signer_job_role,expires_at,version")
-        return {"profile": {"client": client, "invoices": invoices, "agreements": agreements}}
+        proposals = documents("proposals", "id,public_id,client_id,reference,title,status,version,created_at,updated_at,sent_at,viewed_at")
+        return {"profile": {"client": client, "invoices": invoices, "agreements": agreements, "proposals": proposals}}
     except HTTPException:
         raise
     except Exception as exc:

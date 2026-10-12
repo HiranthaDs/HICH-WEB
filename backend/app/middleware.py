@@ -18,7 +18,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
-        private_document = request.url.path.startswith(("/api/", "/sign/", "/invoice/", "/change/", "/collection/"))
+        private_document = request.url.path.startswith(("/api/", "/sign/", "/invoice/", "/proposal/", "/change/", "/collection/"))
         response.headers["Referrer-Policy"] = "no-referrer" if private_document else "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if request.url.path.startswith("/assets/") and response.status_code < 400:

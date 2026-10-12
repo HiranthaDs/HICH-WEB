@@ -89,6 +89,43 @@ class ClientResponse(ClientBase):
     updated_at: datetime
 
 
+class ProposalStatus(StrEnum):
+    DRAFT = "draft"
+    SENT = "sent"
+    VIEWED = "viewed"
+    ARCHIVED = "archived"
+
+
+class ProposalCreate(APIModel):
+    client_id: UUID
+    reference: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$")
+    title: str = Field(min_length=1, max_length=240)
+    html_content: str = Field(min_length=20, max_length=2_000_000)
+
+    @field_validator("reference", mode="before")
+    @classmethod
+    def blank_reference_is_none(cls, value: object) -> object:
+        return None if value == "" else value
+
+
+class ProposalUpdate(APIModel):
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    client_id: UUID | None = None
+    reference: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$")
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    html_content: str | None = Field(default=None, min_length=20, max_length=2_000_000)
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("reference", mode="before")
+    @classmethod
+    def blank_reference_is_none(cls, value: object) -> object:
+        return None if value == "" else value
+
+
+class ProposalShareRequest(APIModel):
+    rotate: bool = False
+
+
 class AgreementStatus(StrEnum):
     DRAFT = "draft"
     SENT = "sent"

@@ -42,6 +42,7 @@ class Query:
 
 
 def gateway(data):
+    data.setdefault("proposals", [])
     return SimpleNamespace(service=SimpleNamespace(table=lambda table: Query(data[table])))
 
 
@@ -50,8 +51,9 @@ def test_profile_loads_all_documents_and_never_another_clients_history():
     invoices = [{"id": str(uuid4()), "client_id": str(client_id), "project_value": "20.50", "currency": "GBP", "status": "sent", "payments": []} for _ in range(501)]
     invoices.append({"id": str(uuid4()), "client_id": str(other_id), "project_value": "999", "status": "sent"})
     agreements = [{"id": str(uuid4()), "client_id": str(client_id), "title": "Client agreement"}, {"id": str(uuid4()), "client_id": str(other_id), "title": "Other client agreement"}]
+    proposals = [{"id": str(uuid4()), "client_id": str(client_id), "title": "Client proposal"}, {"id": str(uuid4()), "client_id": str(other_id), "title": "Other client proposal"}]
     client = {"id": str(client_id), "name": "Invoice client", "address": "Colombo", "notes": "Admin note"}
-    result = get_client_profile(client_id, None, gateway({"clients": [client], "invoices": invoices, "agreements": agreements}))["profile"]
+    result = get_client_profile(client_id, None, gateway({"clients": [client], "invoices": invoices, "agreements": agreements, "proposals": proposals}))["profile"]
     assert result["client"] == client
     assert len(result["invoices"]) == 501
     assert all(row["client_id"] == str(client_id) for row in result["invoices"])
@@ -59,6 +61,8 @@ def test_profile_loads_all_documents_and_never_another_clients_history():
     assert result["invoices"][0]["balance_due"] == "20.50"
     assert len(result["agreements"]) == 1
     assert result["agreements"][0]["title"] == "Client agreement"
+    assert len(result["proposals"]) == 1
+    assert result["proposals"][0]["title"] == "Client proposal"
 
 
 def test_unknown_client_profile_returns_not_found():

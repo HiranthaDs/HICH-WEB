@@ -6,6 +6,7 @@ import { AgreementSigning } from './pages/AgreementSigning'
 import { PublicInvoice } from './pages/PublicInvoice'
 import { PublicChange } from './pages/PublicChange'
 import { PublicPortfolio } from './pages/PublicPortfolio'
+import { PublicProposal } from './pages/PublicProposal'
 import { NotFound } from './pages/NotFound'
 
 const AdminLayout = lazy(() => import('./components/AdminLayout').then((module) => ({ default: module.AdminLayout })))
@@ -14,6 +15,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword').then(module => 
 const OperationsPage = lazy(() => import('./pages/admin/OperationsPage').then(module => ({ default: module.OperationsPage })))
 const OverviewPage = lazy(() => import('./pages/admin/OverviewPage').then((module) => ({ default: module.OverviewPage })))
 const ClientsPage = lazy(() => import('./pages/admin/ClientsPage').then((module) => ({ default: module.ClientsPage })))
+const ProposalsPage = lazy(() => import('./pages/admin/ProposalsPage').then((module) => ({ default: module.ProposalsPage })))
 const AgreementsPage = lazy(() => import('./pages/admin/AgreementsPage').then((module) => ({ default: module.AgreementsPage })))
 const InvoicesPage = lazy(() => import('./pages/admin/InvoicesPage').then((module) => ({ default: module.InvoicesPage })))
 const IncomePage = lazy(() => import('./pages/admin/IncomePage').then(module => ({ default: module.IncomePage })))
@@ -35,6 +37,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PublicPortfolio />} />
         <Route path="/invoice/:token/*" element={<PublicInvoice />} />
+        <Route path="/proposal/:token/*" element={<PublicProposal />} />
         <Route path="/change/:token/*" element={<PublicChange />} />
         <Route path="/collection/:collectionToken/*" element={<PublicPortfolio />} />
         <Route path="/sign/:token/*" element={<AgreementSigning />} />
@@ -45,6 +48,7 @@ export default function App() {
             <Route index element={<OverviewPage />} />
             <Route path="operations" element={<OperationsPage />} />
             <Route path="clients" element={<ClientsPage />} />
+            <Route path="proposals" element={<ProposalsPage />} />
             <Route path="agreements" element={<AgreementsPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="income" element={<IncomePage />} />

@@ -192,7 +192,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
       if (openDialogs[openDialogs.length - 1] !== key) return
       if (event.key === 'Escape') { event.preventDefault(); onCloseRef.current(); return }
       if (event.key !== 'Tab') return
-      const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []).filter((element) => element.offsetParent !== null)
+      const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), iframe, [tabindex="0"]') || []).filter((element) => element.offsetParent !== null)
       const first = elements[0]
       const last = elements[elements.length - 1]
       if (event.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); last?.focus() }

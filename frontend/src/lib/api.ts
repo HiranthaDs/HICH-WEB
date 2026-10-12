@@ -19,6 +19,7 @@ import type {
   OperationTask,
   ChangeOrder,
   PortfolioCollection,
+  Proposal,
 } from './types'
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
@@ -228,6 +229,17 @@ export const api = {
     async update(id: Client['id'], data: Partial<Client>, pin?: string) { return unwrap<Client>(await request(`/clients/${id}`, { method: 'PUT', body: data, headers: pin ? { 'X-Deletion-PIN': pin } : undefined }), ['client']) },
     remove: (id: Client['id'], pin?: string) => request<void>(`/clients/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
   },
+  proposals: {
+    async list() { return listAll<Proposal>('/proposals', ['proposals']) },
+    async get(id: Proposal['id']) { return unwrap<Proposal>(await request(`/proposals/${id}`), ['proposal']) },
+    async create(data: Partial<Proposal>) { return unwrap<Proposal>(await request('/proposals', { method: 'POST', body: data }), ['proposal']) },
+    async update(id: Proposal['id'], data: Partial<Proposal>) { return unwrap<Proposal>(await request(`/proposals/${id}`, { method: 'PUT', body: data }), ['proposal']) },
+    remove: (id: Proposal['id'], pin?: string) => request<void>(`/proposals/${id}`, { method: 'DELETE', headers: pin ? { 'X-Deletion-PIN': pin } : undefined }),
+    async share(id: Proposal['id'], options: { rotate?: boolean } = {}) {
+      const payload = await request<unknown>(`/proposals/${id}/share`, { method: 'POST', body: options })
+      return unwrap<{ url?: string; share_url?: string; token?: string }>(payload, ['share'])
+    },
+  },
   agreements: {
     async fromInvoice(id: Invoice['id']) { return unwrap<Partial<Agreement>>(await request(`/agreements/from-invoice/${id}`), ['agreement']) },
     async template() { return unwrap<AgreementTemplate>(await request('/agreements/template'), ['template']) },
@@ -273,6 +285,7 @@ export const api = {
   async audit() { return unwrapList<AuditEvent>(await request('/audit'), ['events', 'audit']) },
   async publicPortfolio() { return unwrapList<PortfolioProject>(await request('/public/portfolio'), ['projects', 'portfolio']) },
   async publicInvoice(token: string) { return unwrap<Invoice>(await request(`/public/invoices/${encodeURIComponent(token)}`), ['invoice']) },
+  async publicProposal(token: string) { return unwrap<Proposal>(await request(`/public/proposals/${encodeURIComponent(token)}`), ['proposal']) },
   publicAgreementPdf: (token: string) => download(`/public/agreements/${encodeURIComponent(token)}/pdf`, 'hich-signed-agreement.pdf'),
   publicInvoicePdf: (token: string) => download(`/public/invoices/${encodeURIComponent(token)}/pdf`, 'hich-invoice.pdf'),
   operations: {

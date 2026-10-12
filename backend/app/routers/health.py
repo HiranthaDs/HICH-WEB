@@ -23,6 +23,9 @@ def readiness(
         gateway.service.table("profiles").select("id,portal_access").limit(1).execute()
         gateway.service.table("agreements").select("id,source_invoice_id,visiting_fee_lkr,payment_schedule,deleted_at").limit(1).execute()
         gateway.service.table("payments").select("id,date_confirmed").limit(1).execute()
+        # Read required proposal columns so a deployment cannot report ready
+        # while its quotation migration is missing from Supabase.
+        gateway.service.table("proposals").select("id,client_id,html_content,share_nonce,deleted_at").limit(1).execute()
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database is unavailable") from exc
     return {"status": "ready", "service": settings.app_name, "environment": settings.environment}

@@ -38,6 +38,33 @@ export interface ClientProfile {
   client: Client
   invoices: Invoice[]
   agreements: Agreement[]
+  proposals: Proposal[]
+}
+
+export type ProposalStatus = 'draft' | 'sent' | 'viewed' | 'archived' | string
+
+export interface Proposal {
+  id: Id
+  public_id?: Id
+  client_id: Id
+  client_name?: string
+  client_company?: string
+  client_email?: string
+  client_phone?: string
+  client_address?: string
+  client?: Client
+  reference?: string
+  title: string
+  html_content?: string
+  status: ProposalStatus
+  version?: number
+  expected_version?: number
+  content_sha256?: string
+  share_url?: string
+  created_at?: string
+  updated_at?: string
+  sent_at?: string
+  viewed_at?: string
 }
 
 export type AgreementStatus = 'draft' | 'sent' | 'viewed' | 'signed' | 'expired' | 'void' | string

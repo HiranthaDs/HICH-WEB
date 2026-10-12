@@ -5,6 +5,7 @@
 - Dashboard metrics for clients, agreement status, invoiced value, collections, and recent activity.
 - Explainable Hich Intelligence health scoring, risk detection, cash forecasting, renewal opportunities, and prioritized next actions.
 - Client records with contact details, lifecycle status, notes, and related work.
+- AI-authored proposal and quotation HTML with existing/new client selection, isolated previews, permanent private links, view tracking, and WhatsApp/email sharing.
 - Versioned agreement snapshots with expiring signing links, view tracking, explicit consent, typed or drawn signatures, immutable signed records, SHA-256 evidence, and final PDF export.
 - Invoice, milestone, and payment tracking with outstanding-balance summaries.
 - Portfolio management with a project ID/code, title, external link, category, main and secondary descriptions, publishing controls, ordering, and multiple sample images.

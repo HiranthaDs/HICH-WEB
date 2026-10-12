@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .middleware import BrowserOriginMiddleware, RequestContextMiddleware
-from .routers import agreements, audit, auth, clients, dashboard, health, invoices, portfolio, operations, communications
+from .routers import agreements, audit, auth, clients, dashboard, health, invoices, portfolio, operations, communications, proposals
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(communications.router, prefix=prefix)
     app.include_router(dashboard.router, prefix=prefix)
     app.include_router(clients.router, prefix=prefix)
+    app.include_router(proposals.router, prefix=prefix)
     app.include_router(agreements.router, prefix=prefix)
     app.include_router(invoices.router, prefix=prefix)
     app.include_router(invoices.public_router, prefix=prefix)
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(portfolio.router, prefix=prefix)
     app.include_router(audit.router, prefix=prefix)
     app.include_router(agreements.public_router, prefix=prefix)
+    app.include_router(proposals.public_router, prefix=prefix)
     app.include_router(portfolio.public_router, prefix=prefix)
 
     # In the single Render service the Vite build sits beside backend/. API routes

@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate, getClientName } from './format'
 import { withDefaultPaymentInstructions } from './paymentInstructions'
-import type { Agreement, Invoice, PaymentRecord } from './types'
+import type { Agreement, Invoice, PaymentRecord, Proposal } from './types'
 
 export type ClientMessage = { subject: string; body: string }
 const greeting = (name?: string) => `Hello ${name || 'there'},`
@@ -130,6 +130,21 @@ export function agreementMessage(agreement: Agreement): ClientMessage {
     'Next step: Open the private link, confirm the details and sign as the authorised signatory. Please do not forward the link. You can retain a copy after signing.',
     closing,
   ].filter(Boolean).join('\n\n') }
+}
+
+export function proposalMessage(proposal: Proposal): ClientMessage {
+  return {
+    subject: `Hich Web | Proposal & quotation ready | ${proposal.title}`,
+    body: [
+      greeting(proposal.client_name),
+      `Your proposal and quotation for ${proposal.title} is ready to review.`,
+      `PROPOSAL DETAILS\nReference: ${proposal.reference || 'Proposal'}\nPrepared for: ${proposal.client_name || 'Client'}`,
+      proposal.share_url ? `OPEN PROPOSAL & QUOTATION\n${proposal.share_url}` : '',
+      'Please open the private link on your phone or computer and review the complete proposal. If you would like any change or clarification, reply to this message.',
+      'Please do not forward this private link without permission.',
+      closing,
+    ].filter(Boolean).join('\n\n'),
+  }
 }
 
 const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))

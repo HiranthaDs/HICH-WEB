@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   PanelLeftClose,
+  Presentation,
   Search,
   Settings,
   Users,
@@ -29,6 +30,7 @@ import { Brand } from './Brand'
 const navItems = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/clients', label: 'Clients', icon: Users },
+  { to: '/admin/proposals', label: 'Proposals', icon: Presentation },
   { to: '/admin/agreements', label: 'Agreements', icon: FileCheck2 },
   { to: '/admin/invoices', label: 'Invoices', icon: FileText },
   { to: '/admin/income', label: 'Income summary', icon: CircleDollarSign },
@@ -51,16 +53,17 @@ function WorkspaceSearch({ open, onClose }: { open: boolean; onClose: () => void
     if (!open) return
     let cancelled = false
     setQuery(''); setActive(0); setLoading(true); setError(''); setRecords([])
-    void Promise.allSettled([api.clients.list(), api.agreements.list(), api.invoices.list(), api.portfolio.list()]).then(([clients, agreements, invoices, portfolio]) => {
+    void Promise.allSettled([api.clients.list(), api.proposals.list(), api.agreements.list(), api.invoices.list(), api.portfolio.list()]).then(([clients, proposals, agreements, invoices, portfolio]) => {
       if (cancelled) return
       const results: SearchResult[] = []
+      if (proposals.status === 'fulfilled') proposals.value.items.forEach((proposal) => results.push({ id: `proposal-${proposal.id}`, title: proposal.reference || proposal.title, detail: [proposal.title, proposal.client_name, proposal.status].filter(Boolean).join(' · '), category: 'Proposal', destination: `/admin/proposals?search=${encodeURIComponent(proposal.reference || proposal.title)}`, icon: Presentation }))
       if (clients.status === 'fulfilled') clients.value.items.forEach((client) => results.push({ id: `client-${client.id}`, title: client.name, detail: [client.company, client.phone, client.email].filter(Boolean).join(' · '), category: 'Client', destination: `/admin/clients?client=${encodeURIComponent(String(client.id))}`, icon: Users }))
       if (agreements.status === 'fulfilled') agreements.value.items.forEach((agreement) => results.push({ id: `agreement-${agreement.id}`, title: agreement.reference || agreement.title, detail: [agreement.project_title || agreement.title, getClientName(agreement.client, agreement.client_name), agreement.status].filter(Boolean).join(' · '), category: 'Agreement', destination: `/admin/agreements?search=${encodeURIComponent(agreement.reference || agreement.title)}`, icon: FileCheck2 }))
       if (invoices.status === 'fulfilled') invoices.value.items.forEach((invoice) => results.push({ id: `invoice-${invoice.id}`, title: invoice.reference || `Invoice ${invoice.id}`, detail: [getClientName(invoice.client, invoice.client_name), formatCurrency(invoice.amount, invoice.currency || 'LKR'), invoice.status].join(' · '), category: 'Invoice', destination: `/admin/invoices?search=${encodeURIComponent(invoice.reference || String(invoice.id))}`, icon: FileText }))
       if (portfolio.status === 'fulfilled') portfolio.value.items.forEach((project) => results.push({ id: `project-${project.id}`, title: project.title, detail: [project.category, project.published ? 'Published' : 'Draft'].filter(Boolean).join(' · '), category: 'Project', destination: `/admin/portfolio?search=${encodeURIComponent(project.title)}`, icon: BriefcaseBusiness }))
       setRecords(results)
-      const failures = [clients, agreements, invoices, portfolio].filter((result) => result.status === 'rejected').length
-      if (failures) setError(failures === 4 ? 'Workspace records could not be loaded. Close search and try again.' : 'Some records could not be loaded. Available results are shown below.')
+      const failures = [clients, proposals, agreements, invoices, portfolio].filter((result) => result.status === 'rejected').length
+      if (failures) setError(failures === 5 ? 'Workspace records could not be loaded. Close search and try again.' : 'Some records could not be loaded. Available results are shown below.')
       setLoading(false)
     })
     return () => { cancelled = true }

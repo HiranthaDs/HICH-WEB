@@ -636,6 +636,77 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 .email-preview { margin-top: 22px; }
 .email-preview summary { cursor: pointer; font-weight: 600; }
 .email-preview iframe { width: 100%; height: 540px; border: 1px solid var(--line); border-radius: 12px; margin-top: 14px; background: white; }
+
+/* AI-authored proposal and quotation documents */
+.proposal-grid { align-items: stretch; }
+.proposal-card { display: flex; flex-direction: column; }
+.proposal-card footer { margin-top: auto; flex-wrap: wrap; }
+.proposal-form { align-items: start; }
+.proposal-client-link { color: inherit; text-decoration: none; }
+.proposal-client-link:hover { color: var(--brand); text-decoration: underline; }
+.proposal-client-picker { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: #fbfcfe; }
+.proposal-client-picker__heading { margin-bottom: 13px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.proposal-client-picker__heading > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+.proposal-client-picker__heading small { color: var(--muted-2); font-size: 11px; }
+.proposal-client-mode { padding: 3px; display: flex; gap: 3px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+.proposal-client-mode button { min-height: 40px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; font: inherit; font-size: 11px; font-weight: 750; }
+.proposal-client-mode button.active { color: #fff; background: var(--brand); box-shadow: 0 3px 10px rgba(40,52,200,.2); }
+.proposal-client-mode button:focus-visible, .proposal-client-option:focus-visible { outline: 3px solid rgba(55,69,220,.25); outline-offset: 2px; }
+.proposal-client-picker .search-box { width: 100%; margin-bottom: 10px; background: #fff; }
+.proposal-selected-client { margin-bottom: 10px; padding: 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(170px,1fr) auto; align-items: center; gap: 11px; border: 1px solid #b9dfce; border-radius: 12px; background: #f1faf6; }
+.proposal-selected-client__check { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: #fff; background: var(--green); }
+.proposal-selected-client strong, .proposal-selected-client small { display: block; }
+.proposal-selected-client strong { font-size: 11px; }
+.proposal-selected-client small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.proposal-selected-client__contact { min-width: 0; display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 10px; }
+.proposal-selected-client__contact span { display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proposal-client-list { max-height: 245px; padding: 2px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; overflow: auto; }
+.proposal-client-option { min-width: 0; padding: 11px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; text-align: left; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: #fff; cursor: pointer; font: inherit; transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.proposal-client-option:hover { border-color: #bcc5ea; box-shadow: 0 4px 13px rgba(31,44,108,.07); }
+.proposal-client-option.selected { border-color: var(--brand); background: #f4f5ff; box-shadow: 0 0 0 2px rgba(55,69,220,.08); }
+.proposal-client-option > span:nth-child(2) { min-width: 0; }
+.proposal-client-option strong, .proposal-client-option small, .proposal-client-option em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proposal-client-option strong { font-size: 12px; }
+.proposal-client-option small { margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+.proposal-client-option em { margin-top: 5px; color: var(--muted-2); font-size: 10px; font-style: normal; }
+.proposal-client-option > svg { color: var(--brand); }
+.proposal-client-option__icon { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 9px; color: var(--brand); background: #eef0ff; }
+.proposal-client-empty { grid-column: 1 / -1; margin: 0; padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; font-size: 11px; }
+.proposal-client-error { margin: 10px 0 0; }
+.proposal-new-client { padding-top: 4px; }
+.proposal-new-client__note { margin: 0; padding: 10px 12px; display: flex; align-items: center; gap: 8px; color: #365c4b; border-radius: 10px; background: #edf8f3; font-size: 9.5px; }
+.proposal-code-field { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: #f8f9fc; }
+.proposal-code-field__head { min-height: 36px; margin-bottom: 11px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.proposal-code-field__head > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.proposal-code-field__head small { color: var(--muted-2); font-size: 9px; }
+.proposal-html-input { display: block; }
+.proposal-html-input .textarea { min-height: 430px; resize: vertical; tab-size: 2; white-space: pre; overflow: auto; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; color: #17243a; background: #fff; }
+.proposal-preview-frame { display: block; width: 100%; height: 540px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.proposal-preview-frame--large { height: min(72vh, 820px); }
+.proposal-safety-note { display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; color: #264d3d; border: 1px solid #cce8da; border-radius: 12px; background: #f2fbf7; }
+.proposal-safety-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--green); }
+.proposal-safety-note p, .proposal-safety-note strong, .proposal-safety-note span { display: block; }
+.proposal-safety-note p { margin: 0; }
+.proposal-safety-note strong { margin-bottom: 3px; font-size: 10px; }
+.proposal-safety-note span { color: #5d7168; font-size: 9.5px; line-height: 1.5; }
+.proposal-public-viewer { position: fixed; z-index: 1000; inset: 0; width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: #fff; }
+.proposal-public-viewer iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.proposal-public-state { min-height: 100vh; min-height: 100dvh; padding: 24px; display: grid; place-items: center; background: #f5f7fb; }
+.proposal-public-state > * { width: min(560px, 100%); }
+
+@media (max-width: 760px) {
+  .proposal-client-picker__heading { align-items: stretch; flex-direction: column; }
+  .proposal-client-mode { width: 100%; }
+  .proposal-client-mode button { min-height: 44px; flex: 1; justify-content: center; }
+  .proposal-selected-client { grid-template-columns: auto minmax(0,1fr); }
+  .proposal-selected-client__contact, .proposal-selected-client > .text-link, .proposal-selected-client > .field-hint { grid-column: 2; }
+  .proposal-client-list { grid-template-columns: 1fr; max-height: 285px; }
+  .proposal-code-field { padding: 10px; }
+  .proposal-code-field__head { align-items: flex-start; }
+  .proposal-html-input .textarea { min-height: 48vh; font-size: 10px; }
+  .proposal-preview-frame { height: 62vh; }
+  .proposal-card footer .button { flex: 1; }
+}
 .renewal-charge-consent { display: flex; gap: 12px; align-items: flex-start; line-height: 1.7; font-size: 13px; }
 .renewal-charge-consent input { margin-top: 6px; }
 .renewal-summary { margin-bottom: 16px; }
