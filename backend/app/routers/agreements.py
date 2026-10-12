@@ -49,6 +49,25 @@ DOCUMENT_FIELDS = (
     "renewal_amount", "renewal_currency", "renewal_due_date",
     "source_invoice_id", "visiting_fee_lkr", "payment_schedule", "payment_instructions", "project_due_date",
 )
+OPTIONAL_SCHEMA_FIELDS = {"commercial_details_visible", "share_nonce"}
+SCOPE_ONLY_MARKER = "This is a scope-only agreement."
+
+
+def _commercial_details_visible(record: dict[str, Any]) -> bool:
+    """Read the explicit flag, or infer it from generated terms on older schemas."""
+    if record.get("commercial_details_visible") is not None:
+        return record["commercial_details_visible"] is not False
+    terms = record.get("terms")
+    if isinstance(terms, dict):
+        schedule = terms.get("Project-specific commercial schedule", "")
+        return SCOPE_ONLY_MARKER not in str(schedule)
+    return SCOPE_ONLY_MARKER not in json.dumps(terms, default=str, ensure_ascii=False)
+
+
+def _missing_optional_schema(exc: Exception) -> bool:
+    details = exc.args[0] if exc.args else ""
+    message = json.dumps(details, default=str).lower()
+    return "column" in message and any(field in message for field in OPTIONAL_SCHEMA_FIELDS)
 
 
 def _agreement_reference() -> str:
@@ -60,6 +79,7 @@ def _agreement_reference() -> str:
 def _document_snapshot(record: dict[str, Any]) -> dict[str, Any]:
     client = record.get("clients") or {}
     snapshot = {key: record.get(key) for key in DOCUMENT_FIELDS}
+    snapshot["commercial_details_visible"] = _commercial_details_visible(record)
     snapshot.update({
         "reference": record.get("reference") or str(record.get("public_id") or record.get("id")),
         "client_name": record.get("client_name") or client.get("company") or client.get("name"),
@@ -146,6 +166,7 @@ def _shape(record: dict[str, Any], settings: Settings, token: str | None = None)
     client = record.get("clients") or {}
     project = record.get("portfolio_projects") or {}
     shaped = record | {
+        "commercial_details_visible": _commercial_details_visible(record),
         "reference": record.get("reference") or str(record.get("public_id") or record.get("id")),
         "client_name": record.get("client_name") or client.get("company") or client.get("name"),
         "client_email": record.get("client_email") or client.get("email"),
@@ -172,7 +193,7 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
     client = record.get("clients") or {}
     project = record.get("portfolio_projects") or {}
     public_id = str(record.get("public_id") or record.get("id"))
-    show_commercial = record.get("commercial_details_visible", True) is not False
+    show_commercial = _commercial_details_visible(record)
     public_terms = record.get("terms") or {}
     if not show_commercial:
         public_terms = scheduled_terms(record | {"terms": public_terms, "commercial_details_visible": False}, validate=False)
@@ -352,7 +373,19 @@ def create_agreement(
         record["content_sha256"] = _document_digest(record)
         if payload.send_immediately:
             _ensure_shareable(record)
-        created = first(gateway.service.table("agreements").insert(record).execute(), "Agreement")
+        try:
+            created = first(gateway.service.table("agreements").insert(record).execute(), "Agreement")
+        except Exception as exc:
+            if not _missing_optional_schema(exc):
+                raise
+            # Deployments can briefly lead the database migration. Preserve the
+            # selected document type in its generated schedule and issue a
+            # legacy random bearer token until the optional columns are present.
+            token = secrets.token_urlsafe(32)
+            compatibility_record = {key: value for key, value in record.items() if key not in OPTIONAL_SCHEMA_FIELDS}
+            compatibility_record["access_token_hash"] = _token_hash(token, settings)
+            compatibility_record["content_sha256"] = _document_digest(record)
+            created = first(gateway.service.table("agreements").insert(compatibility_record).execute(), "Agreement")
         audit(gateway.service, request, settings, "create", "agreement", created["id"], principal)
         return {"agreement": _shape(_agreement_by_id(UUID(created["id"]), gateway), settings, token)}
     except HTTPException:
@@ -427,7 +460,13 @@ def update_agreement(
         if (current | changes).get("status") in {"sent", "viewed"}:
             _ensure_shareable(current | changes)
         if changes:
-            updated = rows(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").execute())
+            try:
+                updated = rows(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").execute())
+            except Exception as exc:
+                if not _missing_optional_schema(exc):
+                    raise
+                compatibility_changes = {key: value for key, value in changes.items() if key not in OPTIONAL_SCHEMA_FIELDS}
+                updated = rows(gateway.service.table("agreements").update(compatibility_changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").execute())
             if not updated:
                 raise HTTPException(status_code=409, detail="This agreement changed. Reload before saving.")
             audit(gateway.service, request, settings, "update", "agreement", agreement_id, principal, {"fields": sorted(changes)})
@@ -468,9 +507,19 @@ def share_agreement(
         "viewed_at": None,
     }
     try:
-        query = gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").is_("deleted_at", "null")
-        query = query.eq("access_token_hash", current["access_token_hash"]) if current.get("access_token_hash") else query.is_("access_token_hash", "null")
-        updated = rows(query.execute())
+        try:
+            query = gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").is_("deleted_at", "null")
+            query = query.eq("access_token_hash", current["access_token_hash"]) if current.get("access_token_hash") else query.is_("access_token_hash", "null")
+            updated = rows(query.execute())
+        except Exception as exc:
+            if not _missing_optional_schema(exc):
+                raise
+            token = secrets.token_urlsafe(32)
+            compatibility_changes = {key: value for key, value in changes.items() if key != "share_nonce"}
+            compatibility_changes["access_token_hash"] = _token_hash(token, settings)
+            query = gateway.service.table("agreements").update(compatibility_changes).eq("id", str(agreement_id)).eq("version", current.get("version", 1)).neq("status", "signed").is_("deleted_at", "null")
+            query = query.eq("access_token_hash", current["access_token_hash"]) if current.get("access_token_hash") else query.is_("access_token_hash", "null")
+            updated = rows(query.execute())
         if not updated:
             latest = _agreement_by_id(agreement_id, gateway)
             recovered = _recover_token(latest, settings) if not options.rotate and latest.get("status") in {"sent", "viewed"} and latest.get("version") == current.get("version") else None
@@ -500,7 +549,13 @@ def delete_or_void_agreement(
         changes = {"deleted_at": utcnow().isoformat()}
         if current.get("status") != "signed":
             changes.update({"status": "void", "access_token_hash": None, "share_nonce": None})
-        first(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).execute(), "Agreement")
+        try:
+            first(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).execute(), "Agreement")
+        except Exception as exc:
+            if not _missing_optional_schema(exc):
+                raise
+            changes.pop("share_nonce", None)
+            first(gateway.service.table("agreements").update(changes).eq("id", str(agreement_id)).execute(), "Agreement")
         audit(gateway.service, request, settings, "delete", "agreement", agreement_id, principal,
               {"previous_status": current.get("status"), "evidence_retained": True})
         return Response(status_code=204)

@@ -47,6 +47,7 @@ export function InvoicesPage() {
   const [historyTitle, setHistoryTitle] = useState('')
   const [section, setSection] = useState<InvoiceSection>('pending')
   const [menu, setMenu] = useState<string | null>(null)
+  const [mobileActions, setMobileActions] = useState<Invoice | null>(null)
   const [loadWarning, setLoadWarning] = useState('')
   const [editing, setEditing] = useState<Invoice | 'new' | null>(null)
   const [form, setForm] = useState<InvoiceForm>({ ...blankInvoice })
@@ -300,6 +301,16 @@ export function InvoicesPage() {
     setForm({ ...form, renewal_items: items, renewal_late_fee: fee, amount, payments: form.payments.length === 1 && !paymentPaid(form.payments[0]) ? [{ ...form.payments[0], amount }] : form.payments })
   }
 
+  const actionItems = (invoice: Invoice, close: () => void) => <>
+    {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { close(); void share(invoice) }}><Link2 size={17} /> Share & send message</button>}
+    <button role="menuitem" type="button" onClick={() => { close(); void showHistory(invoice) }}><History size={17} /> Revision history</button>
+    {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { close(); void openPayment(invoice) }}><CircleDollarSign size={17} /> Add payment</button>}
+    {invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { close(); openRenewal(invoice) }}><RefreshCw size={17} /> Renewal invoice</button>}
+    {invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && <Link role="menuitem" onClick={close} to={`/admin/agreements?create=1&client=${invoice.client_id}&invoice=${invoice.id}`}><ReceiptText size={17} /> Create agreement</Link>}
+    {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { close(); openEditor(invoice) }}><WalletCards size={17} /> Edit payments</button>}
+    <button role="menuitem" className="danger" type="button" onClick={() => { close(); setDeleting(invoice) }}><Trash2 size={17} /> Delete invoice</button>
+  </>
+
   return <div className="admin-page">
     <PageHeader eyebrow="Payments" title="Invoices" description="Track payment milestones, balances and annual renewals without losing context." action={<Button icon={Plus} onClick={() => openEditor()}>New invoice</Button>} />
     {clientFilter && <div className="document-toolbar"><span>Invoices for {clients.find(client => String(client.id) === clientFilter)?.name || 'this client'}</span><Link className="text-link" to="/admin/invoices">Show all clients</Link></div>}
@@ -322,18 +333,14 @@ export function InvoicesPage() {
         <div className="invoice-row__main"><span className="invoice-row__icon"><FileText size={20} /></span><div><span>{invoice.reference || `INV-${invoice.id}`}</span><h3>{invoice.project_title || 'Project invoice'}</h3><p>{invoice.client_id ? <Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(String(invoice.client_id))}`}>{getClientName(invoice.client, invoice.client_name || client?.name)}</Link> : getClientName(invoice.client, invoice.client_name || client?.name)} · Due {formatDate(invoice.due_date)}</p></div></div>
         <div className="invoice-row__progress"><div><span>Paid {formatCurrency(paid, invoice.currency || 'LKR')}</span><span>{Math.round(percentage)}%</span></div><progress max="100" value={percentage} /></div>
         <div className="invoice-row__amount"><small>Total {formatCurrency(Number(invoice.amount), invoice.currency || 'LKR')}</small><small>Balance</small><strong>{formatCurrency(balance, invoice.currency || 'LKR')}</strong><StatusPill status={invoice.status} /></div>
-        <div className="invoice-row__actions"><div className="more-menu"><Button variant="secondary" size="sm" icon={MoreHorizontal} loading={rowBusy} aria-haspopup="menu" aria-expanded={menu === invoiceId} onClick={() => setMenu(current => current === invoiceId ? null : invoiceId)}>Actions</Button>{menu === invoiceId && <div className="more-menu__popover invoice-actions-menu" role="menu">
-          {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { setMenu(null); void share(invoice) }}><Link2 size={15} /> Share & send message</button>}
-          <button role="menuitem" type="button" onClick={() => { setMenu(null); void showHistory(invoice) }}><History size={15} /> Revision history</button>
-          {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { setMenu(null); void openPayment(invoice) }}><CircleDollarSign size={15} /> Add payment</button>}
-          {invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => openRenewal(invoice)}><RefreshCw size={15} /> Renewal invoice</button>}
-          {invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && <Link role="menuitem" onClick={() => setMenu(null)} to={`/admin/agreements?create=1&client=${invoice.client_id}&invoice=${invoice.id}`}><ReceiptText size={15} /> Create agreement</Link>}
-          {invoice.status !== 'void' && <button role="menuitem" type="button" onClick={() => { setMenu(null); openEditor(invoice) }}><WalletCards size={15} /> Edit payments</button>}
-          <button role="menuitem" className="danger" type="button" onClick={() => { setMenu(null); setDeleting(invoice) }}><Trash2 size={15} /> Delete invoice</button>
-        </div>}</div></div>
+        <div className="invoice-row__actions"><div className="more-menu"><Button variant="secondary" size="sm" icon={MoreHorizontal} loading={rowBusy} aria-haspopup="menu" aria-expanded={menu === invoiceId || String(mobileActions?.id) === invoiceId} onClick={() => { if (window.matchMedia('(max-width: 760px)').matches) { setMenu(null); setMobileActions(invoice) } else setMenu(current => current === invoiceId ? null : invoiceId) }}>Actions</Button>{menu === invoiceId && <div className="more-menu__popover invoice-actions-menu" role="menu">{actionItems(invoice, () => setMenu(null))}</div>}</div></div>
         {invoice.invoice_kind !== 'renewal' && Number(invoice.renewal_amount || 0) > 0 ? <button type="button" className="invoice-row__renewal" onClick={() => openRenewal(invoice)}><RefreshCw size={14} /> Renewal {formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || 'LKR')} · {formatDate(invoice.renewal_due_date)}{(invoice.phone || client?.phone) && <MessageCircle size={14} />}</button> : null}
       </article>
     })}</div>}
+
+    <Modal open={Boolean(mobileActions)} onClose={() => setMobileActions(null)} title="Invoice actions" description={mobileActions ? `${mobileActions.reference || 'Invoice'} · ${mobileActions.project_title || 'Project invoice'}` : undefined} size="sm">
+      {mobileActions && <div className="invoice-actions-dialog" role="menu">{actionItems(mobileActions, () => setMobileActions(null))}</div>}
+    </Modal>
 
     <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editing === 'new' ? 'Create an invoice' : 'Edit invoice'} description="Add your client, project amount, payment phases and annual renewal in one place." size="xl" footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="invoice-form" loading={saving}>{editing === 'new' ? 'Create invoice' : 'Save changes'}</Button></>}>
       <form id="invoice-form" className={`invoice-form${editing !== 'new' ? ' invoice-form--payments-first' : ''}`} onSubmit={save}>

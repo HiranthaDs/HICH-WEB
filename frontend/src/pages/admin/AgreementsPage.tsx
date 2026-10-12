@@ -92,6 +92,58 @@ export function AgreementsPage() {
     finally { setPrefillBusy(false) }
   }, [toast])
 
+  const fillClient = useCallback(async (clientId: string) => {
+    const client = clients.find(item => String(item.id) === clientId)
+    if (!client) {
+      setPrefillError('')
+      setForm(current => ({ ...current, client_id: '', source_invoice_id: null, payment_schedule: [], client_name: '', client_phone: '', client_email: '' }))
+      return
+    }
+
+    setForm(current => ({
+      ...current,
+      client_id: client.id,
+      source_invoice_id: null,
+      payment_schedule: [],
+      client_name: client.name || client.company || '',
+      client_phone: client.phone || '',
+      client_email: client.email || '',
+    }))
+    const latestInvoice = invoices
+      .filter(invoice => invoice.status !== 'void' && String(invoice.client_id) === clientId)
+      .sort((a, b) => Date.parse(b.created_at || b.issue_date || '') - Date.parse(a.created_at || a.issue_date || ''))[0]
+    if (latestInvoice) {
+      await fillInvoice(String(latestInvoice.id))
+      return
+    }
+
+    const latestAgreement = agreements
+      .filter(agreement => agreement.status !== 'void' && String(agreement.client_id) === clientId)
+      .sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''))[0]
+    if (latestAgreement) {
+      setForm(current => ({
+        ...current,
+        title: latestAgreement.title,
+        project_title: latestAgreement.project_title,
+        description: latestAgreement.description,
+        termsText: termsText(latestAgreement.terms),
+        amount: latestAgreement.amount,
+        currency: latestAgreement.currency,
+        commercial_details_visible: latestAgreement.commercial_details_visible !== false,
+        visiting_fee_lkr: latestAgreement.visiting_fee_lkr,
+        payment_schedule: latestAgreement.payment_schedule?.map(phase => ({ ...phase, is_paid: false, received_amount: 0, paid_at: undefined })) || [],
+        payment_instructions: latestAgreement.payment_instructions,
+        project_due_date: latestAgreement.project_due_date,
+        renewal_amount: latestAgreement.renewal_amount,
+        renewal_currency: latestAgreement.renewal_currency,
+        renewal_due_date: latestAgreement.renewal_due_date,
+      }))
+      toast('Client and the latest agreement details were filled automatically.', 'success')
+    } else {
+      toast('Client contact details were filled automatically.', 'success')
+    }
+  }, [agreements, clients, fillInvoice, invoices, toast])
+
   useEffect(() => {
     if (loading || error || params.get('create') !== '1') return
     openEditor()
@@ -202,14 +254,21 @@ export function AgreementsPage() {
         <Select className="form-grid__full" label="Copy from invoice" value={String(form.source_invoice_id || '')} disabled={prefillBusy || saving} onChange={event => { if (event.target.value) void fillInvoice(event.target.value); else { setPrefillError(''); setForm(current => ({ ...current, source_invoice_id: null })) } }} hint="Copies client details, project amount, payment milestones, payment instructions and renewal dates."><option value="">Choose an invoice to fill this agreement</option>{invoices.filter(invoice => !form.client_id || String(invoice.client_id) === String(form.client_id)).map(invoice => <option key={invoice.id} value={String(invoice.id)}>{invoice.reference} — {invoice.project_title} — {invoice.client_name}</option>)}</Select>
         {prefillBusy && <p className="form-grid__full" role="status">Copying invoice details…</p>}{prefillError && <p className="form-grid__full negative" role="alert">{prefillError}</p>}
         <div className="form-grid__full"><SearchInput label="Search client records" placeholder="Search client name, company, email or phone…" value={clientQuery} onChange={setClientQuery} /></div>
-        <Select className="form-grid__full" label="Client record" hint={loadingClients ? 'Refreshing client records…' : 'Clients created in invoices are available here. Select a client to fill their details.'} value={String(form.client_id || '')} onChange={event => { const client = clients.find(c => String(c.id) === event.target.value); setForm({ ...form, client_id: event.target.value, source_invoice_id: null, payment_schedule: [], client_name: client?.name || '', client_phone: client?.phone || '', client_email: client?.email || '' }) }}><option value="">New client - enter details below</option>{clients.filter(client => String(client.id) === String(form.client_id) || [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())).map(client => <option value={String(client.id)} key={client.id}>{client.company ? `${client.company} - ${client.name}` : client.name}</option>)}</Select>
+        <Select className="form-grid__full" label="Client record" hint={loadingClients ? 'Refreshing client records…' : 'Selecting a client fills their contact details and copies all available project, payment and renewal details from their latest active invoice.'} value={String(form.client_id || '')} disabled={prefillBusy || saving} onChange={event => void fillClient(event.target.value)}><option value="">New client - enter details below</option>{clients.filter(client => String(client.id) === String(form.client_id) || [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())).map(client => <option value={String(client.id)} key={client.id}>{client.company ? `${client.company} - ${client.name}` : client.name}</option>)}</Select>
         <p className="form-grid__full generated-id-note">A secure, random 12-digit Agreement ID is generated automatically when you create the agreement.</p>
         <Input label="Client name" value={form.client_name || ''} onChange={event => setForm({ ...form, client_name: event.target.value })} required />
         <Input label="Client phone number" type="tel" value={form.client_phone || ''} onChange={event => setForm({ ...form, client_phone: event.target.value })} placeholder="+94 77 123 4567" required />
         <Input label="Client email" type="email" value={form.client_email || ''} onChange={event => setForm({ ...form, client_email: event.target.value })} optional />
         <Input label="Agreement title" value={form.title || ''} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="E-commerce design & development" required />
         <Input label="Project title" value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder="Project or engagement name" required />
-        <Select className="form-grid__full" label="Client-facing agreement details" value={form.commercial_details_visible === false ? 'scope' : 'full'} onChange={event => setForm({ ...form, commercial_details_visible: event.target.value === 'full' })} hint="Only amounts you enter appear in the client link, PDF and message. You can include a visiting fee or annual renewal without a project total."><option value="full">Include entered amounts — blank prices are omitted</option><option value="scope">Scope-only agreement — hide all amounts and renewal details</option></Select>
+        <fieldset className="form-grid__full agreement-version-picker">
+          <legend>Client agreement version</legend>
+          <p>Choose exactly what the client will see in the link, signed PDF and message.</p>
+          <div>
+            <label className={form.commercial_details_visible !== false ? 'selected' : ''}><input type="radio" name="agreement-version" checked={form.commercial_details_visible !== false} onChange={() => setForm({ ...form, commercial_details_visible: true })} /><span><strong>Full agreement</strong><small>Includes every entered price, payment milestone, visiting fee and renewal detail.</small></span></label>
+            <label className={form.commercial_details_visible === false ? 'selected' : ''}><input type="radio" name="agreement-version" checked={form.commercial_details_visible === false} onChange={() => setForm({ ...form, commercial_details_visible: false })} /><span><strong>No-pricing agreement</strong><small>Includes the scope and terms, but hides all pricing and payment details.</small></span></label>
+          </div>
+        </fieldset>
         {form.commercial_details_visible === false && <p className="form-grid__full generated-id-note">The budget and renewal fields below remain available for your internal record, but they will not appear in the client link, signed PDF or client message.</p>}
         <Input label="Project budget" type="number" min="0.01" step="0.01" value={form.amount ?? ''} onChange={(event) => setForm({ ...form, amount: event.target.value === '' ? null : Number(event.target.value) })} hint="Leave blank when the amount will be agreed in a separate quotation or invoice." optional />
         <Select label="Currency" value={form.currency || 'LKR'} onChange={(event) => setForm({ ...form, currency: event.target.value })}><option value="LKR">LKR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></Select>

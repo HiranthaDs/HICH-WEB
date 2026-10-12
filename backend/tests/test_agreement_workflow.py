@@ -247,6 +247,36 @@ def test_scope_only_agreement_redacts_all_commercial_details(settings):
     assert agreements._document_digest(row) != agreements._document_digest(row | {"commercial_details_visible": True})
 
 
+def test_scope_only_mode_is_inferred_when_production_schema_lacks_visibility_column(settings):
+    row = record(settings)
+    row.pop("commercial_details_visible")
+    row["terms"] = {
+        "Scope": "Website",
+        "Project-specific commercial schedule": (
+            "This is a scope-only agreement. Project prices and payment milestones are intentionally excluded."
+        ),
+    }
+
+    shaped = agreements._shape(row, settings)
+    public = agreements._public_shape(row, settings)
+
+    assert shaped["commercial_details_visible"] is False
+    assert public["commercial_details_visible"] is False
+    assert public["amount"] is None
+
+
+def test_optional_agreement_schema_error_detection():
+    assert agreements._missing_optional_schema(Exception({
+        "message": "Could not find the 'commercial_details_visible' column of 'agreements' in the schema cache",
+        "code": "PGRST204",
+    }))
+    assert agreements._missing_optional_schema(Exception({
+        "message": "column agreements.share_nonce does not exist",
+        "code": "42703",
+    }))
+    assert not agreements._missing_optional_schema(Exception({"message": "connection timed out"}))
+
+
 def test_agreement_without_budget_can_be_signed_and_rendered(settings):
     row = record(settings) | {"amount": None}
     row["content_sha256"] = agreements._document_digest(row)

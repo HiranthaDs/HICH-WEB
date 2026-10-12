@@ -603,6 +603,20 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
 .invoice-row__actions .icon-button { width: 34px; height: 34px; }
 .invoice-actions-menu { width: 230px; }
 .invoice-actions-menu button:disabled { opacity: .5; cursor: not-allowed; }
+.invoice-actions-dialog { display: grid; gap: 7px; }
+.invoice-actions-dialog button, .invoice-actions-dialog a { width: 100%; min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink-2); background: #fff; cursor: pointer; font-weight: 700; text-align: left; }
+.invoice-actions-dialog button:hover, .invoice-actions-dialog a:hover { border-color: #cdd2ff; background: #f7f8ff; }
+.invoice-actions-dialog .danger { color: var(--red); border-color: #f0d5d2; background: var(--red-light); }
+.agreement-version-picker { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--line); border-radius: 15px; }
+.agreement-version-picker legend { padding: 0 5px; color: var(--ink); font-size: 12px; font-weight: 800; }
+.agreement-version-picker > p { margin: 0 0 12px; color: var(--muted); font-size: 10.5px; line-height: 1.6; }
+.agreement-version-picker > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.agreement-version-picker label { min-width: 0; padding: 14px; display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; background: #fff; }
+.agreement-version-picker label.selected { border-color: #7b87ff; background: var(--brand-light); box-shadow: 0 0 0 1px rgba(65,80,255,.12); }
+.agreement-version-picker input { margin-top: 3px; accent-color: var(--brand); }
+.agreement-version-picker span, .agreement-version-picker strong, .agreement-version-picker small { display: block; min-width: 0; }
+.agreement-version-picker strong { font-size: 11.5px; }
+.agreement-version-picker small { margin-top: 5px; color: var(--muted); font-size: 9.5px; line-height: 1.5; }
 .invoice-row__renewal { position: absolute; inset: auto 17px 10px 68px; padding: 7px 10px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; color: #986017; background: #fff4e2; cursor: pointer; font-size: 8.5px; font-weight: 720; }
 .invoice-form { display: flex; flex-direction: column; gap: 23px; }
 .invoice-form--payments-first > .milestone-editor { order: -1; border: 2px solid #5263ff; border-radius: 16px; padding: 18px; }
@@ -884,6 +898,8 @@ progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
   .invoice-row__amount { text-align: left; }
   .invoice-row__amount .status { margin-left: 0; }
   .invoice-row__actions { justify-content: flex-start; flex-wrap: wrap; }
+  .invoice-row__actions .more-menu, .invoice-row__actions .button { width: 100%; }
+  .agreement-version-picker > div { grid-template-columns: 1fr; }
   .invoice-row__renewal { position: static; grid-column: 1; width: max-content; max-width: 100%; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid__full { grid-column: auto; }
