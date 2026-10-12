@@ -22,6 +22,13 @@ Bank: HNB (Hatton National Bank)
 Branch: Kandana"""
 
 
+def with_default_payment_instructions(value: Any) -> str:
+    instructions = str(value or "").strip()
+    if "119020299485" in instructions:
+        return instructions
+    return f"{instructions}\n\n{DEFAULT_PAYMENT_INSTRUCTIONS}" if instructions else DEFAULT_PAYMENT_INSTRUCTIONS
+
+
 class RenewalItem(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     service: Literal["domain", "hosting", "domain_hosting"]
@@ -148,7 +155,7 @@ def public_invoice_shape(record: dict[str, Any]) -> dict[str, Any]:
         "invoice_kind", "renewal_period_date", "renewal_late_fee",
     )
     public = {key: record.get(key) for key in fields}
-    public["payment_instructions"] = public.get("payment_instructions") or DEFAULT_PAYMENT_INSTRUCTIONS
+    public["payment_instructions"] = with_default_payment_instructions(public.get("payment_instructions"))
     client = record.get("clients") or {}
     public["client"] = {key: client.get(key) for key in ("name", "company", "phone")}
     public["client_name"] = client.get("company") or client.get("name") or record.get("client_name")

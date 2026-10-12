@@ -1,5 +1,5 @@
 import { formatCurrency, formatDate, getClientName } from './format'
-import { DEFAULT_PAYMENT_INSTRUCTIONS } from './paymentInstructions'
+import { withDefaultPaymentInstructions } from './paymentInstructions'
 import type { Agreement, Invoice, PaymentRecord } from './types'
 
 export type ClientMessage = { subject: string; body: string }
@@ -25,7 +25,7 @@ export function receiptMessage(invoice: Invoice, receipt: PaymentRecord): Client
 export function invoiceMessage(invoice: Invoice): ClientMessage {
   const paid = Number(invoice.paid_amount || 0), total = Number(invoice.amount || 0)
   const balance = Math.max(0, total - paid)
-  const paymentInstructions = invoice.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
+  const paymentInstructions = withDefaultPaymentInstructions(invoice.payment_instructions)
   if (invoice.invoice_kind === 'renewal') {
     const services = (invoice.renewal_items || []).map(item => bullet(item.description, money(item.amount, invoice.currency))).join('\n')
     const lateFee = Number(invoice.renewal_late_fee || 0)
@@ -82,7 +82,7 @@ export function renewalMessage(renewal: RenewalDetails, lateChargeAccepted = fal
       ? `Agreed late-payment surcharge (18%, once) — itemized late fee: ${money(late, renewal.currency)}\nTotal renewal payment: ${money(base + late, renewal.currency)}`
       : `No late fee is due today. Under the accepted renewal terms, an 18% late-payment surcharge (${money(Math.round(base * 18) / 100, renewal.currency)}) applies once to the unpaid renewal amount only if payment is received after the due date.`
     : 'No late fee has been added to this reminder. If the accepted renewal terms include an 18% late-payment surcharge, we will confirm any applicable itemized late fee before collection.'
-  const paymentInstructions = renewal.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
+  const paymentInstructions = withDefaultPaymentInstructions(renewal.payment_instructions)
   return { subject: `Hich Web | ${renewal.reference ? `${renewal.reference} | ` : ''}${expired ? 'Action required: service renewal overdue' : 'Upcoming domain & hosting renewal'}`, body: [
     greeting(renewal.client_name),
     expired

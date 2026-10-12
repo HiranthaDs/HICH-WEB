@@ -13,7 +13,6 @@ from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
 from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..invoice_sharing import (
-    DEFAULT_PAYMENT_INSTRUCTIONS,
     InvoiceDocumentCreate,
     InvoiceDocumentUpdate,
     InvoiceShareRequest,
@@ -23,6 +22,7 @@ from ..invoice_sharing import (
     invoice_token_hash_candidates,
     public_invoice_shape,
     recover_legacy_invoice_token,
+    with_default_payment_instructions,
 )
 from ..models import (
     MilestoneCreate,
@@ -98,7 +98,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         "milestones": milestones,
         "payments": phases,
         "payment_records": payment_records,
-        "payment_instructions": record.get("payment_instructions") or DEFAULT_PAYMENT_INSTRUCTIONS,
+        "payment_instructions": with_default_payment_instructions(record.get("payment_instructions")),
     }
 
 

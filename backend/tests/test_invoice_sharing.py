@@ -14,7 +14,7 @@ from app.config import Settings, get_settings
 from app.invoice_sharing import (
     DEFAULT_PAYMENT_INSTRUCTIONS,
     InvoiceDocumentCreate, InvoiceDocumentUpdate, InvoiceShareRequest,
-    invoice_token, invoice_token_hash, public_invoice_shape,
+    invoice_token, invoice_token_hash, public_invoice_shape, with_default_payment_instructions,
 )
 from app.routers.invoices import _shape, public_router
 from app.security import rate_limiter
@@ -65,6 +65,13 @@ def test_default_payment_instructions_are_added_when_invoice_has_none() -> None:
     public = public_invoice_shape(_shape(invoice_record() | {"payment_instructions": None}))
     assert public["payment_instructions"] == DEFAULT_PAYMENT_INSTRUCTIONS
     assert "119020299485" in public["payment_instructions"]
+
+
+def test_default_bank_details_are_appended_to_existing_client_instructions_once() -> None:
+    instructions = with_default_payment_instructions("Development started")
+    assert instructions.startswith("Development started\n\nAccount Name: Hich Web")
+    assert instructions.count("119020299485") == 1
+    assert with_default_payment_instructions(instructions) == instructions
 
 
 def test_link_tokens_survive_secret_rotation_but_change_with_nonce(settings: Settings) -> None:

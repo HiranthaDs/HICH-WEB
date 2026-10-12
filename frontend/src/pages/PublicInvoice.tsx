@@ -5,7 +5,7 @@ import { Brand } from '../components/Brand'
 import { Button, ErrorState, LoadingState, StatusPill } from '../components/ui'
 import { api } from '../lib/api'
 import { formatCurrency, formatDate } from '../lib/format'
-import { DEFAULT_PAYMENT_INSTRUCTIONS } from '../lib/paymentInstructions'
+import { withDefaultPaymentInstructions } from '../lib/paymentInstructions'
 import type { Invoice } from '../lib/types'
 
 export function PublicInvoice() {
@@ -29,7 +29,7 @@ export function PublicInvoice() {
   const balance = Number(invoice?.balance_due ?? Math.max(0, total - paid))
   const isPaid = balance <= 0 || invoice?.status === 'paid'
   const isRenewal = invoice?.invoice_kind === 'renewal'
-  const paymentInstructions = invoice?.payment_instructions?.trim() || DEFAULT_PAYMENT_INSTRUCTIONS
+  const paymentInstructions = withDefaultPaymentInstructions(invoice?.payment_instructions)
 
   return <div className="sign-page public-invoice">
     <header className="sign-header invoice-screen-header"><Brand /><span><LockKeyhole size={14} />Secure invoice</span></header>
