@@ -307,6 +307,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .agreement-section--muted { display: flex; gap: 13px; align-items: flex-start; padding: 18px; margin-top: 25px; border-radius: 13px; background: #f7f8fc; color: var(--green); }
 .agreement-section--muted h2 { margin: 0 0 4px; }
 .agreement-section--muted p { font-family: inherit; font-size: 12px; }
+.agreement-section--notice { display: grid; grid-template-columns: 40px minmax(0,1fr); gap: 14px; padding: 19px; border: 1px solid #e1e5f5; background: linear-gradient(135deg,#f7f8ff,#fbfcff); }
+.agreement-section--notice > div { min-width: 0; }
+.agreement-section--notice h2 { color: var(--ink); line-height: 1.35; }
+.agreement-section--notice p { color: #626982; line-height: 1.7; overflow-wrap: anywhere; }
+.agreement-section__icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: var(--brand); background: #e9ecff; }
+.agreement-section--scope { border-color: #d9e8e1; background: linear-gradient(135deg,#f2faf6,#fbfdfc); }
+.agreement-section--scope .agreement-section__icon { color: #14714e; background: #def3e9; }
 .agreement-value { margin-top: 32px; padding: 18px 20px; border-radius: 14px; background: #eff0ff; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .agreement-value span { color: var(--muted); font-size: 11px; font-weight: 700; }
 .agreement-value strong { font-size: 20px; letter-spacing: -.03em; }
@@ -1718,6 +1725,10 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .sign-page:not(.public-invoice) .agreement-terms-preview { margin-top: 19px; padding: 17px; }
   .sign-page:not(.public-invoice) .agreement-terms-preview h2 { font-size: 16px; }
   .sign-page:not(.public-invoice) .agreement-terms-preview p { font-size: 12px; line-height: 1.7; }
+  .sign-page:not(.public-invoice) .agreement-section--notice { grid-template-columns: 38px minmax(0,1fr); gap: 12px; margin-top: 20px; padding: 16px; border-radius: 14px; }
+  .sign-page:not(.public-invoice) .agreement-section--notice .agreement-section__icon { width: 38px; height: 38px; border-radius: 11px; }
+  .sign-page:not(.public-invoice) .agreement-section--notice h2 { margin: 1px 0 7px; font-size: 15px; }
+  .sign-page:not(.public-invoice) .agreement-section--notice p { font-size: 12px; line-height: 1.68; }
   .sign-page:not(.public-invoice) .sign-panel { scroll-margin-top: 77px; }
   .sign-page:not(.public-invoice) .sign-panel__sticky { padding: 20px 18px; border-top-width: 4px; }
   .sign-page:not(.public-invoice) .sign-panel__heading { margin-bottom: 18px; }
@@ -1745,6 +1756,20 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .sign-page:not(.public-invoice) .agreement-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .sign-page:not(.public-invoice) .agreement-meta > div:first-child,
   .sign-page:not(.public-invoice) .agreement-meta > div:nth-child(4) { grid-column: 1 / -1; }
+}
+@media (max-width: 360px) {
+  .sign-page:not(.public-invoice) .sign-header > span { padding-inline: 8px; font-size: 7px; }
+  .sign-page:not(.public-invoice) .sign-progress { padding-inline: 10px; }
+  .sign-page:not(.public-invoice) .sign-progress i { margin-inline: 4px; }
+  .sign-page:not(.public-invoice) .agreement-document,
+  .sign-page:not(.public-invoice) .sign-panel__sticky { padding-inline: 15px; }
+  .sign-page:not(.public-invoice) .agreement-meta { grid-template-columns: minmax(0,1fr); }
+  .sign-page:not(.public-invoice) .agreement-meta > div { grid-column: 1 / -1; }
+  .sign-page:not(.public-invoice) .agreement-section--notice { grid-template-columns: 34px minmax(0,1fr); padding: 14px; }
+  .sign-page:not(.public-invoice) .agreement-section--notice .agreement-section__icon { width: 34px; height: 34px; }
+  .sign-page:not(.public-invoice) .agreement-section--notice > div { display: contents; }
+  .sign-page:not(.public-invoice) .agreement-section--notice h2 { grid-column: 2; align-self: center; margin: 0; }
+  .sign-page:not(.public-invoice) .agreement-section--notice p { grid-column: 1 / -1; margin-top: -2px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .modal-shell { padding: 6px; }
