@@ -2,13 +2,14 @@ import { Check, CircleDollarSign, Link2, History, Download, FileText, MessageCir
 import { Link, useSearchParams } from 'react-router-dom'
 import { InvoicePayments } from '../../components/InvoicePayments'
 import { RenewalInvoiceForm, RenewalItemsEditor } from '../../components/RenewalInvoiceForm'
+import { RenewalsWorkspace, renewalSources } from '../../components/RenewalsWorkspace'
 import { SharePanel } from '../../components/SharePanel'
 import { exportCsv } from '../../lib/sharing'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, SearchInput, Select, StatusPill, Textarea } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, deletionPin } from '../../lib/api'
-import { invoiceMessage, receiptMessage, renewalMessage } from '../../lib/messages'
+import { invoiceMessage, receiptMessage } from '../../lib/messages'
 import { DEFAULT_PAYMENT_INSTRUCTIONS } from '../../lib/paymentInstructions'
 import { addPaymentPhase } from '../../lib/paymentPlan'
 import { formatCurrency, formatDate, getClientName } from '../../lib/format'
@@ -17,7 +18,7 @@ import type { Client, Invoice, InvoiceVersion, PaymentRecord } from '../../lib/t
 type Payment = NonNullable<Invoice['payments']>[number]
 type InvoiceForm = Partial<Invoice> & { payments: Payment[] }
 type InvoiceSection = 'pending' | 'completed' | 'void'
-type InvoiceAction = 'share' | 'payment' | 'history' | 'revoke'
+type InvoiceAction = 'share' | 'payment' | 'history' | 'revoke' | 'renewal'
 const blankInvoice: InvoiceForm = { client_id: '', project_title: '', amount: 0, paid_amount: 0, currency: 'LKR', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', payment_method: 'Bank transfer', payment_instructions: DEFAULT_PAYMENT_INSTRUCTIONS, notes: '', renewal_amount: 0, renewal_currency: 'LKR', renewal_due_date: '', payments: [{ name: 'Advance payment', amount: 0, status: 'Pending', is_paid: false }, { name: 'Final balance', amount: 0, status: 'Pending', is_paid: false }] }
 const blankClient: Partial<Client> = { name: '', company: '', email: '', phone: '', address: '', notes: '', status: 'active' }
 
@@ -33,7 +34,6 @@ export function InvoicesPage() {
   const [clientQuery, setClientQuery] = useState('')
   const [renewal, setRenewal] = useState<Invoice | null>(null)
   const [renewalSource, setRenewalSource] = useState<Invoice | null>(null)
-  const [lateChargeAccepted, setLateChargeAccepted] = useState(false)
   const [visitFee, setVisitFee] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -46,11 +46,12 @@ export function InvoicesPage() {
   const [busyAction, setBusyAction] = useState<{ invoiceId: string; action: InvoiceAction } | null>(null)
   const [history, setHistory] = useState<InvoiceVersion[] | null>(null)
   const [historyTitle, setHistoryTitle] = useState('')
-  const [section, setSection] = useState<InvoiceSection>('pending')
+  const [section, setSection] = useState<InvoiceSection | 'renewals'>(params.get('section') === 'renewals' ? 'renewals' : 'pending')
   const [menu, setMenu] = useState<string | null>(null)
   const [mobileActions, setMobileActions] = useState<Invoice | null>(null)
   const [loadWarning, setLoadWarning] = useState('')
   const [editing, setEditing] = useState<Invoice | 'new' | null>(null)
+  const [editorIntent, setEditorIntent] = useState<'invoice' | 'renewal-setup'>('invoice')
   const [form, setForm] = useState<InvoiceForm>({ ...blankInvoice })
   const [clientMode, setClientMode] = useState<'existing' | 'new'>('existing')
   const [newClient, setNewClient] = useState<Partial<Client>>({ ...blankClient })
@@ -89,7 +90,7 @@ export function InvoicesPage() {
   const scopedInvoices = useMemo(() => invoices.filter((invoice) => !clientFilter || String(invoice.client_id) === clientFilter), [invoices, clientFilter])
   const filtered = useMemo(() => scopedInvoices.filter((invoice) => sectionFor(invoice) === section && (!query || [invoice.reference, invoice.project_title, getClientName(invoice.client, invoice.client_name)].join(' ').toLowerCase().includes(query.toLowerCase()))), [scopedInvoices, query, section])
   const sectionCounts = useMemo(() => scopedInvoices.reduce<Record<InvoiceSection, number>>((counts, invoice) => { counts[sectionFor(invoice)] += 1; return counts }, { pending: 0, completed: 0, void: 0 }), [scopedInvoices])
-  const liveInvoices = invoices.filter((invoice) => invoice.status !== 'void')
+  const liveInvoices = scopedInvoices.filter((invoice) => invoice.status !== 'void')
   const currencyTotals = Object.entries(liveInvoices.reduce<Record<string, { paid: number; outstanding: number }>>((totals, invoice) => {
     const currency = invoice.currency || 'LKR'
     const paid = Number(invoice.paid_amount || 0)
@@ -100,7 +101,8 @@ export function InvoicesPage() {
   const totalPaid = currencyTotals.map(([currency, total]) => formatCurrency(total.paid, currency)).join(' / ') || formatCurrency(0)
   const totalOutstanding = currencyTotals.map(([currency, total]) => formatCurrency(total.outstanding, currency)).join(' / ') || formatCurrency(0)
 
-  const openEditor = (invoice?: Invoice) => {
+  const openEditor = (invoice?: Invoice, intent: 'invoice' | 'renewal-setup' = 'invoice') => {
+    setEditorIntent(intent)
     setEditing(invoice || 'new')
     const payments = invoice?.payments?.length ? invoice.payments.map((payment) => ({ ...payment })) : blankInvoice.payments.map((payment) => ({ ...payment }))
     const selectedId = params.get('client') || ''
@@ -117,6 +119,13 @@ export function InvoicesPage() {
     const request = params.toString()
     if (openedRequest.current === request) return
     if (params.get('create') === '1') { openedRequest.current = request; openEditor() }
+    else if (params.get('renewal')) {
+      openedRequest.current = request
+      setSection('renewals')
+      const source = invoices.find(item => String(item.id) === params.get('renewal'))
+      if (source) void openRenewal(source)
+      else toast('This renewal project could not be found. Refresh the invoices and try again.', 'error')
+    }
     else if (params.get('invoice')) {
       const invoice = invoices.find(item => String(item.id) === params.get('invoice'))
       if (invoice) { openedRequest.current = request; setSection(sectionFor(invoice)); openEditor(invoice) }
@@ -203,6 +212,7 @@ export function InvoicesPage() {
     if (clientMode === 'existing' && !form.client_id) return toast('Choose an existing client or create a new client below.', 'error')
     if (clientMode === 'new' && !newClient.name?.trim()) return toast('Enter the new client’s name.', 'error')
     if (!form.project_title?.trim() || Number(form.amount) <= 0) return toast('Enter the project title and total project amount.', 'error')
+    if (editorIntent === 'renewal-setup' && (!form.renewal_due_date || Number(form.renewal_amount) <= 0)) return toast('Enter the annual renewal amount and service expiry date to prepare this renewal.', 'error')
     const payments = form.payments.filter((payment) => Number(payment.amount) > 0)
     if (payments.some((payment) => !payment.name.trim())) return toast('Enter a name for each payment milestone.', 'error')
     const normalizedPayments = payments.length ? payments : [{ name: 'Full project payment', amount: Number(form.amount), status: 'Pending', is_paid: false }]
@@ -229,7 +239,10 @@ export function InvoicesPage() {
       const saved = editing === 'new' ? await api.invoices.create(payload) : await api.invoices.update((editing as Invoice).id, payload, removesData ? deletionPin() : undefined)
       setInvoices((current) => editing === 'new' ? [saved, ...current] : current.map((invoice) => invoice.id === saved.id ? saved : invoice))
       toast(editing === 'new' ? clientCreated ? 'Client and invoice created.' : 'Invoice created.' : 'Invoice updated.', 'success'); setEditing(null)
-      if (saved.status !== 'void') await share(saved)
+      if (saved.status !== 'void') {
+        if (editorIntent === 'renewal-setup') await openRenewal(saved)
+        else await share(saved)
+      }
     } catch (requestError) { toast(`${clientCreated ? 'Client saved. Retry the invoice with this selected client. ' : ''}${requestError instanceof Error ? requestError.message : 'Invoice could not be saved.'}`, 'error') }
     finally { setSaving(false) }
   }
@@ -250,6 +263,7 @@ export function InvoicesPage() {
       const updated = { ...invoice, ...result.invoice, share_url: result.share_url, share_expires_at: undefined }
       setShared(updated)
       setSharedReceipt(receipt || null)
+      setRenewal(current => String(current?.id) === invoiceId ? null : current)
       setInvoices(current => current.map(item => item.id === invoice.id ? updated : item))
     } catch (e) { toast(receipt ? 'Payment is saved. The link could not be prepared; use Share & send message to retry.' : e instanceof Error ? e.message : 'Could not create link.', 'error') }
     finally { setBusyAction(current => current?.invoiceId === invoiceId && current.action === 'share' ? null : current) }
@@ -272,27 +286,43 @@ export function InvoicesPage() {
   const openPayment = async (invoice: Invoice) => {
     const invoiceId = String(invoice.id)
     setBusyAction({ invoiceId, action: 'payment' })
-    try { setPaymentInvoice(await api.invoices.get(invoice.id)) }
+    try {
+      setPaymentInvoice(await api.invoices.get(invoice.id))
+      setRenewal(current => String(current?.id) === invoiceId ? null : current)
+    }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not load payment details.', 'error') }
     finally { setBusyAction(current => current?.invoiceId === invoiceId && current.action === 'payment' ? null : current) }
   }
-  const openRenewal = (invoice: Invoice) => {
+  const openRenewal = async (invoice: Invoice) => {
+    if (busyAction) return
     setMenu(null)
-    if (Number(invoice.renewal_amount || 0) <= 0 || !invoice.renewal_due_date) {
-      toast('Add the renewal amount and service expiry date under Edit payments first.', 'error')
-      openEditor(invoice)
-      return
+    const invoiceId = String(invoice.id)
+    setBusyAction({ invoiceId, action: 'renewal' })
+    try {
+      const source = await api.invoices.get(invoice.id)
+      setInvoices(current => current.map(item => String(item.id) === invoiceId ? source : item))
+      if (source.status === 'void') {
+        toast('This invoice was voided. Choose an active invoice to continue the renewal.', 'error')
+        return
+      }
+      if (source.invoice_kind === 'renewal') { setRenewal(source); return }
+      if (!source.renewal_due_date) {
+        toast('Add the annual renewal amount and service expiry date to this project invoice.', 'error')
+        openEditor(source, 'renewal-setup')
+        return
+      }
+      const existing = await api.invoices.getRenewal(source.id, source.renewal_due_date.slice(0, 10))
+      if (existing) {
+        setInvoices(current => current.some(item => String(item.id) === String(existing.id)) ? current.map(item => String(item.id) === String(existing.id) ? existing : item) : [existing, ...current])
+        setRenewal(existing)
+      } else {
+        setRenewalSource({ ...source, client_name: getClientName(source.client, source.client_name || clientFor(source, clients)?.name) })
+      }
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'The renewal cycle could not be loaded. Please retry.', 'error')
+    } finally {
+      setBusyAction(current => current?.invoiceId === invoiceId && current.action === 'renewal' ? null : current)
     }
-    setLateChargeAccepted(false)
-    setRenewal(invoice)
-  }
-
-  const prepareRenewal = async (source: Invoice) => {
-    if (!source.renewal_due_date) return toast('Save the service expiry / renewal date under Edit payments first.', 'error')
-    const existing = invoices.find(invoice => invoice.invoice_kind === 'renewal' && String(invoice.renewal_source_invoice_id) === String(source.id) && invoice.renewal_period_date?.slice(0, 10) === source.renewal_due_date?.slice(0, 10) && invoice.status !== 'void')
-    setRenewal(null)
-    if (existing) return share(existing)
-    setRenewalSource(source)
   }
 
   const updateRenewalItems = (items: NonNullable<Invoice['renewal_items']>) => {
@@ -315,15 +345,16 @@ export function InvoicesPage() {
   return <div className="admin-page">
     <PageHeader eyebrow="Payments" title="Invoices" description="Track payment milestones, balances and annual renewals without losing context." action={<Button icon={Plus} onClick={() => openEditor()}>New invoice</Button>} />
     {clientFilter && <div className="document-toolbar"><span>Invoices for {clients.find(client => String(client.id) === clientFilter)?.name || 'this client'}</span><Link className="text-link" to="/admin/invoices">Show all clients</Link></div>}
-    <section className="invoice-summary"><article><span><CircleDollarSign size={21} /></span><div><small>Collected</small><strong>{totalPaid}</strong></div></article><article><span><WalletCards size={21} /></span><div><small>Outstanding</small><strong>{totalOutstanding}</strong></div></article><article><span><FileText size={21} /></span><div><small>Open invoices</small><strong>{invoices.filter((invoice) => !['paid', 'void'].includes(invoice.status)).length}</strong></div></article></section>
+    <section className="invoice-summary"><article><span><CircleDollarSign size={21} /></span><div><small>Collected</small><strong>{totalPaid}</strong></div></article><article><span><WalletCards size={21} /></span><div><small>Outstanding</small><strong>{totalOutstanding}</strong></div></article><article><span><FileText size={21} /></span><div><small>Open invoices</small><strong>{scopedInvoices.filter((invoice) => !['paid', 'void'].includes(invoice.status)).length}</strong></div></article></section>
     <nav className="invoice-sections" aria-label="Invoice sections">
       <button type="button" className={section === 'pending' ? 'active' : ''} aria-current={section === 'pending' ? 'page' : undefined} onClick={() => setSection('pending')}>Pending <span>{sectionCounts.pending}</span></button>
       <button type="button" className={section === 'completed' ? 'active' : ''} aria-current={section === 'completed' ? 'page' : undefined} onClick={() => setSection('completed')}>Completed <span>{sectionCounts.completed}</span></button>
       <button type="button" className={section === 'void' ? 'active' : ''} aria-current={section === 'void' ? 'page' : undefined} onClick={() => setSection('void')}>Voided <span>{sectionCounts.void}</span></button>
+      <button type="button" className={section === 'renewals' ? 'active' : ''} aria-current={section === 'renewals' ? 'page' : undefined} onClick={() => setSection('renewals')}>Renewals <span>{renewalSources(scopedInvoices).length}</span></button>
     </nav>
-    <section className="toolbar panel panel--flat"><SearchInput value={query} onChange={setQuery} placeholder={`Search ${section} invoices…`} label={`Search ${section} invoices`} /><div className="toolbar__right"><Button variant="ghost" size="sm" icon={Download} disabled={!filtered.length} onClick={() => exportCsv(`hich-${section}-invoices.csv`, filtered.map(i => ({ Reference: i.reference, Client: i.client_name, Project: i.project_title, Total: i.amount, Paid: i.paid_amount, Currency: i.currency, Status: i.status, Due: i.due_date, Renewal: i.renewal_amount, 'Renewal currency': i.renewal_currency, 'Renewal due': i.renewal_due_date })))}>Export shown</Button><Button variant="ghost" size="sm" icon={RefreshCw} loading={loading} onClick={load}>Refresh</Button></div></section>
+    <section className="toolbar panel panel--flat"><SearchInput value={query} onChange={setQuery} placeholder={`Search ${section} invoices…`} label={`Search ${section} invoices`} /><div className="toolbar__right">{section !== 'renewals' && <Button variant="ghost" size="sm" icon={Download} disabled={!filtered.length} onClick={() => exportCsv(`hich-${section}-invoices.csv`, filtered.map(i => ({ Reference: i.reference, Client: i.client_name, Project: i.project_title, Total: i.amount, Paid: i.paid_amount, Currency: i.currency, Status: i.status, Due: i.due_date, Renewal: i.renewal_amount, 'Renewal currency': i.renewal_currency, 'Renewal due': i.renewal_due_date })))}>Export shown</Button>}<Button variant="ghost" size="sm" icon={RefreshCw} loading={loading} onClick={load}>Refresh</Button></div></section>
     {(loadWarning || (error && invoices.length > 0)) && <div className="data-notice" role="status"><span>{loadWarning || `Refresh failed: ${error}. The last successfully loaded invoices remain visible.`}</span><Button variant="ghost" size="sm" onClick={load}>Retry</Button></div>}
-    {loading && !invoices.length ? <LoadingState label="Loading invoices…" /> : error && !invoices.length ? <ErrorState title="Invoices could not be loaded" message={error} onRetry={load} /> : filtered.length === 0 ? <EmptyState icon={section === 'completed' ? Check : section === 'void' ? Trash2 : FileText} title={query ? `No ${section} invoices match` : section === 'pending' ? 'No pending invoices' : section === 'completed' ? 'No completed invoices yet' : 'No voided invoices'} description={query ? 'Try a different search.' : section === 'pending' ? 'You are caught up. Create a new invoice when the next project is ready.' : section === 'completed' ? 'Fully paid invoices move here automatically.' : 'Voided invoices are kept separate from active work.'} action={!query && section === 'pending' ? <Button icon={Plus} onClick={() => openEditor()}>Create invoice</Button> : undefined} /> : <div className="invoice-list">{filtered.map((invoice) => {
+    {loading && !invoices.length ? <LoadingState label="Loading invoices…" /> : error && !invoices.length ? <ErrorState title="Invoices could not be loaded" message={error} onRetry={load} /> : section === 'renewals' ? <RenewalsWorkspace invoices={scopedInvoices} clients={clients} query={query} busyId={busyAction?.invoiceId} onOpen={source => void openRenewal(source)} onShare={invoice => void share(invoice)} onPayment={invoice => void openPayment(invoice)} onEdit={source => openEditor(source, 'renewal-setup')} busyAction={busyAction?.action} /> : filtered.length === 0 ? <EmptyState icon={section === 'completed' ? Check : section === 'void' ? Trash2 : FileText} title={query ? `No ${section} invoices match` : section === 'pending' ? 'No pending invoices' : section === 'completed' ? 'No completed invoices yet' : 'No voided invoices'} description={query ? 'Try a different search.' : section === 'pending' ? 'You are caught up. Create a new invoice when the next project is ready.' : section === 'completed' ? 'Fully paid invoices move here automatically.' : 'Voided invoices are kept separate from active work.'} action={!query && section === 'pending' ? <Button icon={Plus} onClick={() => openEditor()}>Create invoice</Button> : undefined} /> : <div className="invoice-list">{filtered.map((invoice) => {
       const client = clientFor(invoice, clients)
       const paid = Number(invoice.paid_amount ?? invoice.payments?.filter(paymentPaid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0)
       const balance = Math.max(0, invoice.amount - paid)
@@ -331,11 +362,11 @@ export function InvoicesPage() {
       const invoiceId = String(invoice.id)
       const rowBusy = busyAction?.invoiceId === invoiceId
       return <article className="invoice-row" key={invoice.id}>
-        <div className="invoice-row__main"><span className="invoice-row__icon"><FileText size={20} /></span><div><span>{invoice.reference || `INV-${invoice.id}`}</span><h3>{invoice.project_title || 'Project invoice'}</h3><p>{invoice.client_id ? <Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(String(invoice.client_id))}`}>{getClientName(invoice.client, invoice.client_name || client?.name)}</Link> : getClientName(invoice.client, invoice.client_name || client?.name)} · Due {formatDate(invoice.due_date)}</p></div></div>
+        <div className="invoice-row__main"><span className="invoice-row__icon"><FileText size={20} /></span><div><span>{invoice.reference || `INV-${invoice.id}`}</span><h3>{invoice.project_title || 'Project invoice'}</h3>{invoice.invoice_kind === 'renewal' && <small className="invoice-renewal-label"><RefreshCw size={11} /> Renewal invoice</small>}<p>{invoice.client_id ? <Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(String(invoice.client_id))}`}>{getClientName(invoice.client, invoice.client_name || client?.name)}</Link> : getClientName(invoice.client, invoice.client_name || client?.name)} · Due {formatDate(invoice.due_date)}</p></div></div>
         <div className="invoice-row__progress"><div><span>Paid {formatCurrency(paid, invoice.currency || 'LKR')}</span><span>{Math.round(percentage)}%</span></div><progress max="100" value={percentage} /></div>
         <div className="invoice-row__amount"><small>Total {formatCurrency(Number(invoice.amount), invoice.currency || 'LKR')}</small><small>Balance</small><strong>{formatCurrency(balance, invoice.currency || 'LKR')}</strong><StatusPill status={invoice.status} /></div>
         <div className="invoice-row__actions"><div className="more-menu"><Button variant="secondary" size="sm" icon={MoreHorizontal} loading={rowBusy} aria-haspopup="menu" aria-expanded={menu === invoiceId || String(mobileActions?.id) === invoiceId} onClick={() => { if (window.matchMedia('(max-width: 760px)').matches) { setMenu(null); setMobileActions(invoice) } else setMenu(current => current === invoiceId ? null : invoiceId) }}>Actions</Button>{menu === invoiceId && <div className="more-menu__popover invoice-actions-menu" role="menu">{actionItems(invoice, () => setMenu(null))}</div>}</div></div>
-        {invoice.invoice_kind !== 'renewal' && Number(invoice.renewal_amount || 0) > 0 ? <button type="button" className="invoice-row__renewal" onClick={() => openRenewal(invoice)}><RefreshCw size={14} /> Renewal {formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || 'LKR')} · {formatDate(invoice.renewal_due_date)}{(invoice.phone || client?.phone) && <MessageCircle size={14} />}</button> : null}
+        {invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && Number(invoice.renewal_amount || 0) > 0 ? <button type="button" className="invoice-row__renewal" disabled={Boolean(busyAction)} onClick={() => void openRenewal(invoice)}><RefreshCw size={14} /> Renewal {formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || 'LKR')} · {formatDate(invoice.renewal_due_date)}{(invoice.phone || client?.phone) && <MessageCircle size={14} />}</button> : null}
       </article>
     })}</div>}
 
@@ -343,8 +374,8 @@ export function InvoicesPage() {
       {mobileActions && <div className="invoice-actions-dialog" role="menu">{actionItems(mobileActions, () => setMobileActions(null))}</div>}
     </Modal>
 
-    <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editing === 'new' ? 'Create an invoice' : 'Edit invoice'} description="Add your client, project amount, payment phases and annual renewal in one place." size="xl" footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="invoice-form" loading={saving}>{editing === 'new' ? 'Create invoice' : 'Save changes'}</Button></>}>
-      <form id="invoice-form" className={`invoice-form${editing !== 'new' ? ' invoice-form--payments-first' : ''}`} onSubmit={save}>
+    <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editorIntent === 'renewal-setup' ? 'Set up annual renewal' : editing === 'new' ? 'Create an invoice' : 'Edit invoice'} description={editorIntent === 'renewal-setup' ? 'Add the annual renewal amount and service expiry date, then review the charges for this cycle.' : 'Add your client, project amount, payment phases and annual renewal in one place.'} size="xl" footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="invoice-form" loading={saving}>{editorIntent === 'renewal-setup' ? 'Save & prepare renewal' : editing === 'new' ? 'Create invoice' : 'Save changes'}</Button></>}>
+      <form id="invoice-form" className={`invoice-form${editorIntent === 'renewal-setup' ? ' invoice-form--renewal-first' : editing !== 'new' ? ' invoice-form--payments-first' : ''}`} onSubmit={save}>
         <section className="invoice-client-editor">
           <div><p className="eyebrow">Client details</p><h3>Who is this invoice for?</h3><p>New clients are saved to Clients and can be selected when creating an agreement.</p></div>
           <Select label="Client option" value={clientMode} disabled={saving} onChange={event => setClientMode(event.target.value as 'existing' | 'new')}><option value="existing">Select an existing client</option><option value="new">Create a new client</option></Select>
@@ -385,19 +416,19 @@ export function InvoicesPage() {
         <Textarea label="Payment instructions (visible to client)" value={form.payment_instructions || ''} onChange={event => setForm({ ...form, payment_instructions: event.target.value })} rows={3} placeholder="Bank name, account name, account number and payment reference" /><Textarea label="Client note" value={form.customer_note || ''} onChange={event => setForm({ ...form, customer_note: event.target.value })} rows={2} optional /><Textarea label="Internal notes (admin only)" value={form.notes || ''} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} placeholder="Payment instructions or internal context…" optional />
       </form>
     </Modal>
-    <RenewalInvoiceForm source={renewalSource} onClose={() => setRenewalSource(null)} onSaved={(saved, record) => { setInvoices(current => current.some(invoice => invoice.id === saved.id) ? current.map(invoice => invoice.id === saved.id ? saved : invoice) : [saved, ...current]); if (record) setPaymentInvoice(saved); else void share(saved) }} />
+    <RenewalInvoiceForm source={renewalSource} onClose={() => setRenewalSource(null)} onSaved={(saved, record) => { setInvoices(current => current.some(invoice => invoice.id === saved.id) ? current.map(invoice => invoice.id === saved.id ? saved : invoice) : [saved, ...current]); if (record) setPaymentInvoice(saved); else { setRenewal(saved); void share(saved) } }} />
     <InvoicePayments invoice={paymentInvoice} onClose={() => setPaymentInvoice(null)} onPlanSaved={saved => setInvoices(current => current.map(invoice => invoice.id === saved.id ? saved : invoice))} onSaved={(saved, receipt) => { setInvoices(current => current.map(invoice => invoice.id === saved.id ? saved : invoice)); void share(saved, false, receipt); if (saved.invoice_kind === 'renewal') void load() }} />
     <Modal open={Boolean(shared)} onClose={() => setShared(null)} title={sharedReceipt ? 'Send payment receipt' : shared?.invoice_kind === 'renewal' ? shared.status === 'paid' ? 'Send paid renewal invoice' : 'Send renewal invoice' : 'Share invoice'} description="The client link has no expiry date and displays the latest saved invoice.">{shared?.share_url && <>
       <SharePanel url={shared.share_url} title={(sharedReceipt ? receiptMessage(shared, sharedReceipt) : invoiceMessage(shared)).subject} phone={shared.phone || clientFor(shared, clients)?.phone} email={shared.client_email || clientFor(shared, clients)?.email} message={(sharedReceipt ? receiptMessage(shared, sharedReceipt) : invoiceMessage(shared)).body} />
       <div className="document-toolbar"><Button variant="secondary" icon={Download} onClick={() => void api.invoices.pdf(shared.id, shared.reference).catch(error => toast(error.message, 'error'))}>Download PDF</Button><Button variant="secondary" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'share'} onClick={() => void share(shared, true, sharedReceipt || undefined)}>Replace link</Button><Button variant="danger" loading={busyAction?.invoiceId === String(shared.id) && busyAction.action === 'revoke'} onClick={() => void revoke()}>Revoke link</Button></div><p className="field-hint">Invoice links do not expire. Replacing or revoking a link immediately disables the previous link.</p>
     </>}</Modal>
-    <Modal open={Boolean(renewal)} onClose={() => setRenewal(null)} title="Renewal invoice & client message" description="Review the saved renewal amount, prepare the invoice, and contact the client from one place." size="lg">{renewal && <>
-      <dl className="document-summary renewal-summary"><div><dt>Client</dt><dd>{getClientName(renewal.client, renewal.client_name || clientFor(renewal, clients)?.name)}</dd></div><div><dt>Project</dt><dd>{renewal.project_title || 'Domain & hosting services'}</dd></div><div><dt>Renewal amount</dt><dd>{formatCurrency(Number(renewal.renewal_amount || 0), renewal.renewal_currency || 'LKR')}</dd></div><div><dt>Service expiry / renewal date</dt><dd>{formatDate(renewal.renewal_due_date)}</dd></div></dl>
-      <div className="document-toolbar"><Button onClick={() => void prepareRenewal(renewal)}>Create / open renewal invoice</Button><Link className="button button--secondary" to={`/admin/clients?client=${encodeURIComponent(String(renewal.client_id || ''))}`}>Open client profile</Link></div>
-      <label className="renewal-charge-consent"><input type="checkbox" checked={lateChargeAccepted} onChange={event => setLateChargeAccepted(event.target.checked)} /> This client expressly accepted the 18% late-payment surcharge in their renewal terms.</label>
-      <div className="renewal-message-heading"><p className="eyebrow">Send message to client</p><h3>Professional renewal reminder</h3></div>
-      <SharePanel title={renewalMessage({ client_name: getClientName(renewal.client, renewal.client_name || clientFor(renewal, clients)?.name), reference: renewal.reference, amount: renewal.renewal_amount, currency: renewal.renewal_currency, due_date: renewal.renewal_due_date, project_title: renewal.project_title }, lateChargeAccepted).subject} phone={renewal.phone || clientFor(renewal, clients)?.phone} email={renewal.client_email || clientFor(renewal, clients)?.email} message={renewalMessage({ client_name: getClientName(renewal.client, renewal.client_name || clientFor(renewal, clients)?.name), reference: renewal.reference, amount: renewal.renewal_amount, currency: renewal.renewal_currency, due_date: renewal.renewal_due_date, project_title: renewal.project_title, payment_instructions: renewal.payment_instructions }, lateChargeAccepted).body} />
-    </>}</Modal>
+    <Modal open={Boolean(renewal)} onClose={() => setRenewal(null)} title="Review renewal invoice" description="This service cycle already has an invoice. Continue from its saved payment status." size="lg">{renewal && <div className="renewal-review">
+      <div className="renewal-review__balance"><div><small>{renewal.status === 'paid' ? 'Paid in full' : 'Balance due'}</small><strong>{formatCurrency(Math.max(0, Number(renewal.amount) - Number(renewal.paid_amount || 0)), renewal.currency)}</strong></div><StatusPill status={renewal.status} /></div>
+      <dl className="document-summary"><div><dt>Client</dt><dd>{getClientName(renewal.client, renewal.client_name || clientFor(renewal, clients)?.name)}</dd></div><div><dt>Invoice</dt><dd>{renewal.reference}</dd></div><div><dt>Service expiry / renewal cycle</dt><dd>{formatDate(renewal.renewal_period_date)}</dd></div><div><dt>Payment due</dt><dd>{formatDate(renewal.due_date)}</dd></div></dl>
+      <ul className="renewal-review__services">{renewal.renewal_items?.map((item, index) => <li key={index}><span>{item.description}</span><strong>{formatCurrency(item.amount, renewal.currency)}</strong></li>)}{Number(renewal.renewal_late_fee) > 0 && <li><span>Agreed late-payment surcharge (18%)</span><strong>{formatCurrency(Number(renewal.renewal_late_fee), renewal.currency)}</strong></li>}<li><span>Invoice total</span><strong>{formatCurrency(Number(renewal.amount), renewal.currency)}</strong></li><li><span>Payments received</span><strong>{formatCurrency(Number(renewal.paid_amount || 0), renewal.currency)}</strong></li></ul>
+      <p className="field-hint">{renewal.status === 'paid' ? 'Payment is complete. Send the paid invoice to your client and confirm service renewal with the provider.' : 'Review the client message before sending. Record payment when the funds have cleared.'}</p>
+      <div className="document-toolbar"><Button icon={MessageCircle} disabled={Boolean(busyAction)} loading={busyAction?.invoiceId === String(renewal.id) && busyAction.action === 'share'} onClick={() => void share(renewal)}>{renewal.status === 'paid' ? 'Send paid renewal invoice' : 'Prepare client message'}</Button>{renewal.status !== 'paid' && <Button variant="secondary" icon={CircleDollarSign} disabled={Boolean(busyAction)} loading={busyAction?.invoiceId === String(renewal.id) && busyAction.action === 'payment'} onClick={() => void openPayment(renewal)}>Record payment</Button>}<Button variant="ghost" disabled={Boolean(busyAction)} onClick={() => { const invoice = renewal; setRenewal(null); openEditor(invoice) }}>Edit invoice</Button></div>
+    </div>}</Modal>
     <Modal open={history !== null} onClose={() => setHistory(null)} title={`Revision history - ${historyTitle}`} description="Saved snapshots show how this invoice changed over time.">{history?.length ? history.map(item => <details className="revision-item" key={item.version}><summary>Version {item.version} - {formatDate(item.created_at)} - {formatCurrency(item.snapshot.amount || item.snapshot.project_value || 0, item.snapshot.currency || 'LKR')}</summary><dl className="document-summary"><div><dt>Project</dt><dd>{item.snapshot.project_title}</dd></div><div><dt>Status</dt><dd>{item.snapshot.status}</dd></div><div><dt>Paid</dt><dd>{formatCurrency(item.snapshot.paid_amount || item.snapshot.payment_records?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0, item.snapshot.currency || 'LKR')}</dd></div><div><dt>Due</dt><dd>{formatDate(item.snapshot.due_date)}</dd></div></dl></details>) : <p>No saved revisions yet.</p>}</Modal>
     <ConfirmDialog open={Boolean(deleting)} onClose={() => setDeleting(null)} onConfirm={remove} loading={deleteBusy} title={`Delete ${deleting?.reference || 'invoice'}?`} description="Remove the invoice from the workspace and disable its public link. It will no longer count as open." confirmLabel="Delete invoice" warning="Recorded payments and invoice history remain in the audit record." />
   </div>

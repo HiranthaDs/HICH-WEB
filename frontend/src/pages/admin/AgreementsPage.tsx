@@ -198,7 +198,7 @@ export function AgreementsPage() {
       const response = await api.agreements.share(agreement.id, { rotate })
       const link = response.share_url || ('url' in response ? response.url : undefined) || ('token' in response && response.token ? `${window.location.origin}/sign/${response.token}` : undefined)
       if (!link) throw new Error('The server did not return a signing link.')
-      const updated = { ...agreement, share_url: link, status: agreement.status === 'draft' ? 'sent' : agreement.status }
+      const updated = { ...agreement, share_url: link, status: rotate || agreement.status === 'draft' ? 'sent' : agreement.status, viewed_at: rotate ? undefined : agreement.viewed_at }
       setAgreements(current => current.map(item => item.id === agreement.id ? updated : item))
       setShared(updated)
     } catch (requestError) { toast(requestError instanceof Error ? requestError.message : 'A signing link could not be created.', 'error') }
@@ -231,7 +231,7 @@ export function AgreementsPage() {
   }
 
   return <div className="admin-page">
-    <PageHeader eyebrow="Documents" title="Agreements" description="Add the project details, create a link and collect your client's signature." action={<Button icon={Plus} onClick={() => openEditor()}>New agreement</Button>} />
+    <PageHeader eyebrow="Documents" title="Agreements" description="Create a signing link and collect your client's signature." action={<Button icon={Plus} onClick={() => openEditor()}>New agreement</Button>} />
     {clientFilter && <div className="document-toolbar"><span>Agreements for {clients.find(client => String(client.id) === clientFilter)?.name || 'this client'}</span><Button variant="ghost" size="sm" onClick={() => { const next = new URLSearchParams(params); next.delete('client'); next.delete('search'); setParams(next) }}>Show all clients</Button></div>}
     <section className="agreement-summary">
       {['draft', 'sent', 'viewed', 'signed'].map((item) => <article key={item}><StatusPill status={item} /><strong>{agreements.filter((agreement) => agreement.status === item).length}</strong><small>{item === 'signed' ? 'Completed' : item === 'viewed' ? 'Awaiting signature' : item === 'sent' ? 'Link generated' : 'In preparation'}</small></article>)}
@@ -244,7 +244,7 @@ export function AgreementsPage() {
       return <article className="agreement-card" key={agreement.id}>
         <header><span className="agreement-card__icon"><FileCheck2 size={21} /></span><StatusPill status={agreement.status} /><Button variant="danger" size="sm" icon={Trash2} onClick={() => setDeleting(agreement)}>Delete</Button><div className="more-menu"><button className="icon-button" type="button" onClick={() => setMenu(menu === agreement.id ? null : agreement.id)} aria-label={`More actions for ${agreement.title}`}><MoreHorizontal size={18} /></button>{menu === agreement.id && <div className="more-menu__popover">{shareable && <button onClick={() => openEditor(agreement)}>Edit agreement</button>}{shareable && <button onClick={() => share(agreement)}><Copy size={15} /> Copy signing link</button>}<button onClick={() => duplicate(agreement)}><Copy size={15} /> Duplicate as new</button><button onClick={() => downloadPdf(agreement)}><Download size={15} /> Download PDF</button><button className="danger" onClick={() => { setDeleting(agreement); setMenu(null) }}><Trash2 size={15} /> Delete agreement</button></div>}</div></header>
         <div className="agreement-card__copy"><span>{agreement.reference || `AGR-${agreement.id}`}</span><h3>{agreement.title}</h3><p>{name} · {agreement.project_title || 'General engagement'}</p></div>
-        <dl><div><dt>Value</dt><dd>{Number(agreement.amount) > 0 ? formatCurrency(Number(agreement.amount), agreement.currency || 'LKR') : 'Not included'} {agreement.commercial_details_visible === false && <small>· hidden from client</small>}</dd></div><div><dt>Link access</dt><dd>No expiry date</dd></div></dl>
+        <dl><div><dt>Value</dt><dd>{Number(agreement.amount) > 0 ? formatCurrency(Number(agreement.amount), agreement.currency || 'LKR') : 'Not included'} {agreement.commercial_details_visible === false && <small>· hidden from client</small>}</dd></div><div><dt>Created</dt><dd>{formatDate(agreement.created_at)}</dd></div></dl>
         <footer>{shareable ? <><Button variant="secondary" size="sm" icon={Link2} loading={sharing === agreement.id} onClick={() => share(agreement)}>{agreement.status === 'draft' ? 'Create link' : 'Copy link'}</Button>{client?.phone && <Button variant="ghost" size="sm" icon={MessageCircle} onClick={() => share(agreement)}>WhatsApp</Button>}{!client?.phone && agreement.status === 'draft' && <span className="agreement-card__hint"><Send size={14} /> Ready to share</span>}</> : <span className="agreement-card__hint"><FileCheck2 size={14} /> {agreement.status === 'signed' ? 'Completed and immutable' : 'No longer active'}</span>}</footer>
       </article>
     })}</div>}

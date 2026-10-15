@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from .config import get_settings
 from .middleware import BrowserOriginMiddleware, RequestContextMiddleware
@@ -42,6 +43,9 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(BrowserOriginMiddleware, settings=settings)
+    # Compress document HTML/JSON and the SPA assets while preserving the
+    # no-store policy on private links. Small responses stay uncompressed.
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,

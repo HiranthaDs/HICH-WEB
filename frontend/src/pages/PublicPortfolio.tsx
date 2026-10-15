@@ -3,6 +3,8 @@ import {
   ArrowRight,
   BadgeCheck,
   Blocks,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   ExternalLink,
   Layers3,
@@ -52,9 +54,14 @@ export function PublicPortfolio() {
   }
 
   useEffect(() => { void load() }, [collectionToken])
-  useEffect(() => { setSelectedImage(0) }, [selected])
+  useEffect(() => {
+    setSelectedImage(0)
+    document.querySelector<HTMLElement>('.modal--xl:has(.case-study) .modal__body')?.scrollTo(0, 0)
+  }, [selected])
 
   const featured = useMemo(() => projects.filter(project => !category || (project.category || 'Other').toLowerCase() === category.toLowerCase()).sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || Number(a.sort_order || 0) - Number(b.sort_order || 0)), [projects, category])
+  const selectedImages = selected ? projectImages(selected) : []
+  const selectedProjectIndex = selected ? featured.findIndex(project => project.id === selected.id) : -1
 
   return (
     <div className="public-site">
@@ -103,7 +110,7 @@ export function PublicPortfolio() {
               <p>A closer look at the commerce, platform and brand experiences we have helped bring to life.</p>
             </div>
 
-            <div className="portfolio-filters"><div role="group" aria-label="Project category"><button className={!category ? 'active' : ''} onClick={() => setParams({})}>All work <small>{projects.length}</small></button>{[...new Set(projects.map(project => project.category || 'Other'))].map(item => <button key={item} className={category.toLowerCase() === item.toLowerCase() ? 'active' : ''} onClick={() => setParams({ category: item })}>{item}<small>{projects.filter(p => (p.category || 'Other') === item).length}</small></button>)}</div><Button variant="secondary" size="sm" onClick={() => void copyText(window.location.href.split('#')[0] + '#work').then(() => toast('Collection link copied.', 'success')).catch(e => toast(e.message, 'error'))}>Copy collection link</Button></div>
+            <div className="portfolio-filters"><div role="group" aria-label="Project category"><button type="button" className={!category ? 'active' : ''} aria-pressed={!category} onClick={() => setParams({})}>All work <small>{projects.length}</small></button>{[...new Set(projects.map(project => project.category || 'Other'))].map(item => <button type="button" key={item} className={category.toLowerCase() === item.toLowerCase() ? 'active' : ''} aria-pressed={category.toLowerCase() === item.toLowerCase()} onClick={() => setParams({ category: item })}>{item}<small>{projects.filter(p => (p.category || 'Other') === item).length}</small></button>)}</div><Button variant="secondary" size="sm" onClick={() => void copyText(window.location.href.split('#')[0] + '#work').then(() => toast('Collection link copied.', 'success')).catch(e => toast(e.message, 'error'))}>Copy collection link</Button></div>
             {loading ? <LoadingState label="Loading selected work…" /> : error ? (
               <ErrorState title="Our work is temporarily unavailable" message={error} onRetry={load} />
             ) : featured.length === 0 ? (
@@ -115,12 +122,13 @@ export function PublicPortfolio() {
                   return (
                     <article className={`project-card${index === 0 ? ' project-card--featured' : ''}`} key={project.id}>
                       <button className="project-card__visual" type="button" onClick={() => setSelected(project)} aria-label={`View ${project.title} project`}>
-                        {images[0] ? <img src={images[0]} alt={`${project.title} preview`} /> : <span className={`project-placeholder project-placeholder--${index % 3}`}><span>{project.title.slice(0, 1)}</span></span>}
+                        {images[0] ? <img src={images[0]} alt={`${project.title} preview`} loading="lazy" /> : <span className={`project-placeholder project-placeholder--${index % 3}`}><span>{project.title.slice(0, 1)}</span></span>}
                         <span className="project-card__open"><ArrowDownRight size={18} /></span>
-                        {images.length > 1 && <span className="project-card__count">{images.length} views</span>}
+                        {images.length > 1 && <span className="project-card__count">{images.length} images</span>}
                       </button>
                       <div className="project-card__body">
-                        <div><span className="project-card__category">{project.category || 'Digital experience'}</span><h3>{project.title}</h3></div>
+                        <div className="project-card__heading"><span className="project-card__category">{project.category || 'Digital experience'}</span><span className="project-card__number">{String(index + 1).padStart(2, '0')}</span></div>
+                        <h3>{project.title}</h3>
                         <p>{project.sub_description || project.main_description || 'A focused digital experience created around real people and clear business goals.'}</p>
                         <button type="button" className="text-link" onClick={() => setSelected(project)}>View case study <ArrowRight size={15} /></button>
                       </div>
@@ -177,10 +185,29 @@ export function PublicPortfolio() {
       <Modal open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.title || 'Project'} description={selected?.category} size="xl">
         {selected && <div className="case-study">
           <div className="case-study__gallery">
-            {projectImages(selected)[selectedImage] ? <img src={projectImages(selected)[selectedImage]} alt={`${selected.title} view ${selectedImage + 1}`} /> : <span className="project-placeholder"><span>{selected.title.slice(0, 1)}</span></span>}
-            {projectImages(selected).length > 1 && <div className="case-study__thumbs">{projectImages(selected).map((image, index) => <button className={selectedImage === index ? 'active' : ''} type="button" key={image} onClick={() => setSelectedImage(index)}><img src={image} alt={`Show view ${index + 1}`} /></button>)}</div>}
+            <div className="case-study__image">
+              {selectedImages[selectedImage] ? <img src={selectedImages[selectedImage]} alt={`${selected.title} image ${selectedImage + 1} of ${selectedImages.length}`} /> : <span className="project-placeholder"><span>{selected.title.slice(0, 1)}</span></span>}
+            </div>
+            {selectedImages.length > 0 && <div className="case-study__image-bar">
+              <span>{String(selectedImage + 1).padStart(2, '0')} / {String(selectedImages.length).padStart(2, '0')}</span>
+              <a href={selectedImages[selectedImage]} target="_blank" rel="noreferrer">Open full image <ExternalLink size={14} /></a>
+              {selectedImages.length > 1 && <div className="case-study__image-controls">
+                <button type="button" onClick={() => setSelectedImage(index => (index - 1 + selectedImages.length) % selectedImages.length)} aria-label="Previous image"><ChevronLeft size={19} /></button>
+                <button type="button" onClick={() => setSelectedImage(index => (index + 1) % selectedImages.length)} aria-label="Next image"><ChevronRight size={19} /></button>
+              </div>}
+            </div>}
+            {selectedImages.length > 1 && <div className="case-study__thumbs" role="group" aria-label="Project images">{selectedImages.map((image, index) => <button className={selectedImage === index ? 'active' : ''} type="button" key={`${image}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Show image ${index + 1} of ${selectedImages.length}`} aria-pressed={selectedImage === index}><img src={image} alt="" loading="lazy" /></button>)}</div>}
           </div>
-          <div className="case-study__copy"><p>{selected.main_description || selected.sub_description}</p>{selected.sub_description && selected.main_description !== selected.sub_description && <small>{selected.sub_description}</small>}{selected.url && <a className="button button--primary" href={selected.url} target="_blank" rel="noreferrer"><span>Visit live project</span><ExternalLink size={17} /></a>}</div>
+          <div className="case-study__copy">
+            <p className="case-study__eyebrow">About the project</p>
+            <p>{selected.main_description || selected.sub_description || 'A focused digital experience created around real people and clear business goals.'}</p>
+            {selected.sub_description && selected.main_description !== selected.sub_description && <small>{selected.sub_description}</small>}
+            {selected.url && <a className="button button--primary" href={selected.url} target="_blank" rel="noreferrer"><span>Visit live project</span><ExternalLink size={17} /></a>}
+            {featured.length > 1 && <div className="case-study__project-nav">
+              <button type="button" onClick={() => { setSelectedImage(0); setSelected(featured[selectedProjectIndex - 1]) }} disabled={selectedProjectIndex <= 0}><ChevronLeft size={17} /> Previous project</button>
+              <button type="button" onClick={() => { setSelectedImage(0); setSelected(featured[selectedProjectIndex + 1]) }} disabled={selectedProjectIndex >= featured.length - 1}>Next project <ChevronRight size={17} /></button>
+            </div>}
+          </div>
         </div>}
       </Modal>
     </div>

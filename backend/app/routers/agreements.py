@@ -21,6 +21,7 @@ from ..agreement_template import CONSENT_TEXT, template_payload
 from ..commercial_terms import scheduled_terms
 from ..data import audit, db_failure, first, rows
 from ..dependencies import Principal, current_admin, require_deletion_pin
+from ..document_views import mark_agreement_viewed
 from ..models import AgreementCreate, AgreementShareRequest, AgreementUpdate, SignAgreementRequest, json_ready
 from ..pdf import agreement_pdf
 from ..security import (
@@ -260,10 +261,11 @@ def _public_shape(record: dict[str, Any], settings: Settings) -> dict[str, Any]:
 
 
 def _agreement_by_id(agreement_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
-    return first(
+    record = first(
         gateway.service.table("agreements").select(AGREEMENT_SELECT).is_("deleted_at", "null").eq("id", str(agreement_id)).limit(1).execute(),
         "Agreement",
     )
+    return record
 
 
 def _agreement_by_token(token: str, settings: Settings, gateway: SupabaseGateway) -> dict[str, Any]:
@@ -511,12 +513,14 @@ def share_agreement(
         raise HTTPException(status_code=409, detail="A void agreement cannot be shared")
     _ensure_shareable(current)
     options = payload or AgreementShareRequest()
-    nonce = str(current.get("share_nonce") or "")
     token = None if options.rotate else _recover_token(current, settings)
-    replace_link = token is None
-    if replace_link:
-        nonce = str(uuid4())
-        token = _agreement_token(str(current["public_id"]), nonce, settings)
+    if token is not None:
+        # Copying a stable link does not turn a viewed agreement back to sent.
+        audit(gateway.service, request, settings, "share", "agreement", agreement_id, principal)
+        url = _share_url(settings, token)
+        return {"share": {"url": url, "share_url": url, "token": token, "version": current.get("version", 1)}}
+    nonce = str(uuid4())
+    token = _agreement_token(str(current["public_id"]), nonce, settings)
     changes = {
         "share_nonce": nonce,
         "access_token_hash": _token_hash(token, settings),
@@ -644,11 +648,9 @@ def public_agreement(
         record = _agreement_by_token(token, settings, gateway)
         if record.get("status") in {"draft", "void"}:
             raise HTTPException(status_code=404, detail="Agreement not found")
-        if record.get("status") == "sent":
-            now = utcnow().isoformat()
-            gateway.service.table("agreements").update({"status": "viewed", "viewed_at": now}).eq("id", record["id"]).eq("status", "sent").execute()
-            record["status"] = "viewed"
-            record["viewed_at"] = now
+        opened = mark_agreement_viewed(gateway, record)
+        record.update({"status": opened["document_status"], "viewed_at": opened["first_viewed_at"]})
+        if opened["first_opened"]:
             audit(gateway.service, request, settings, "view", "agreement", record["id"])
         return {"agreement": _public_shape(record, settings)}
     except HTTPException:

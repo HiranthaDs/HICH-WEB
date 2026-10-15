@@ -81,10 +81,55 @@ class FakeGateway:
         self.storage = FakeStorage()
         self.service = self
         self.updates = []
+        self.counters = []
 
     def table(self, name):
-        assert name == "agreements"
-        return FakeQuery(self)
+        if name == "agreements":
+            return FakeQuery(self)
+        assert name == "document_open_counts"
+        return CounterQuery(self)
+
+    def rpc(self, name, payload):
+        assert name == "record_document_open"
+        return FakeViewRpc(self, payload)
+
+
+class CounterQuery:
+    def __init__(self, gateway):
+        self.gateway = gateway
+        self.filters = []
+
+    def select(self, _): return self
+    def eq(self, name, value): self.filters.append(lambda row: row.get(name) == value); return self
+    def in_(self, name, values): self.filters.append(lambda row: row.get(name) in values); return self
+
+    def execute(self):
+        return SimpleNamespace(data=[deepcopy(row) for row in self.gateway.counters if all(test(row) for test in self.filters)])
+
+
+class FakeViewRpc:
+    def __init__(self, gateway, payload):
+        self.gateway = gateway
+        self.payload = payload
+
+    def execute(self):
+        row = self.gateway.row
+        assert self.payload["p_document_type"] == "agreement"
+        if (row["id"] != self.payload["p_document_id"] or row.get("access_token_hash") != self.payload["p_access_token_hash"]
+                or row.get("status") not in {"sent", "viewed", "signed", "expired"} or row.get("deleted_at") is not None):
+            return SimpleNamespace(data=[])
+        first_opened = row["status"] == "sent"
+        if first_opened:
+            row.update({"status": "viewed", "viewed_at": "2026-10-14T08:00:00Z"})
+        count = next((item for item in self.gateway.counters if item["document_id"] == row["id"]), None)
+        if count is None:
+            count = {"document_type": "agreement", "document_id": row["id"], "open_count": 0}
+            self.gateway.counters.append(count)
+        count["open_count"] += 1
+        count["last_opened_at"] = "2026-10-14T08:00:00Z"
+        return SimpleNamespace(data=[{"document_status": row["status"], "first_viewed_at": row.get("viewed_at"),
+                                      "view_count": count["open_count"], "last_opened_at": count["last_opened_at"],
+                                      "first_opened": first_opened}])
 
 
 class FakeQuery:
@@ -366,11 +411,32 @@ def test_copying_agreement_link_is_stable_and_explicit_replacement_rotates_it(se
     principal = SimpleNamespace(id=uuid4())
 
     first = agreements.share_agreement(UUID(row["id"]), request(), None, principal, settings, gateway)["share"]
+    agreements.public_agreement(first["token"], request(), settings, gateway)
+    viewed_at = gateway.row["viewed_at"]
     second = agreements.share_agreement(UUID(row["id"]), request(), None, principal, settings, gateway)["share"]
+    assert gateway.row["status"] == "viewed"
+    assert gateway.row["viewed_at"] == viewed_at
+    assert gateway.counters == []
     replacement = agreements.share_agreement(UUID(row["id"]), request(), AgreementShareRequest(rotate=True), principal, settings, gateway)["share"]
 
     assert first["url"] == second["url"]
     assert replacement["url"] != first["url"]
+    assert gateway.counters == []
+
+
+def test_signed_agreement_revisit_does_not_count_or_update_signed_record(settings):
+    row = record(settings) | {"status": "signed", "viewed_at": "2026-10-10T09:00:00Z"}
+    gateway = FakeGateway(row)
+    gateway.counters.append({"document_type": "agreement", "document_id": row["id"], "open_count": 1,
+                             "last_opened_at": row["viewed_at"]})
+
+    first = agreements.public_agreement(TOKEN, request(), settings, gateway)["agreement"]
+    second = agreements.public_agreement(TOKEN, request(), settings, gateway)["agreement"]
+
+    assert first["status"] == second["status"] == "signed"
+    assert gateway.counters[0]["open_count"] == 1
+    assert gateway.updates == []
+    assert gateway.row == row
 
 
 @pytest.mark.parametrize("change", [{"version": 3}, {"content_sha256": "f" * 64}])

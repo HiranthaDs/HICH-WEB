@@ -11,6 +11,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.graphics.barcode import createBarcodeDrawing
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.platypus import Image as PlatypusImage
 
@@ -59,10 +60,28 @@ def invoice_pdf(invoice: dict[str, Any]) -> bytes:
         return result
 
     renewal = invoice.get("invoice_kind") == "renewal"
-    story.extend([Paragraph("HICH WEB", styles["Heading2"]),
-                  Paragraph("RENEWAL INVOICE" if renewal else "INVOICE", styles["Title"]),
-                  p(f"{reference}  |  {str(invoice.get('status') or 'draft').upper()}  |  Revision {invoice.get('revision') or 1}"),
-                  Spacer(1, 6 * mm)])
+    logo_path = Path(__file__).resolve().parents[2] / "frontend" / "public" / "hich.png"
+    if not logo_path.exists():
+        logo_path = Path(__file__).resolve().parents[2] / "hich.png"
+    brand = PlatypusImage(str(logo_path), width=35 * mm, height=17 * mm, kind="proportional") if logo_path.exists() else p("HICH WEB")
+    qr = createBarcodeDrawing("QR", value=reference, barLevel="M", width=25 * mm, height=25 * mm)
+    barcode = createBarcodeDrawing("Code128", value=reference, barWidth=.28 * mm, barHeight=9 * mm, humanReadable=False)
+    if barcode.width > 90 * mm:
+        scale = 90 * mm / barcode.width
+        barcode.scale(scale, 1)
+        barcode.width = 90 * mm
+    heading = Table([[brand, [
+        Paragraph("RENEWAL INVOICE" if renewal else "INVOICE", styles["Heading2"]),
+        p(reference), Spacer(1, 2 * mm), barcode,
+    ], qr]], colWidths=[43 * mm, 101 * mm, 30 * mm], hAlign="LEFT")
+    heading.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.extend([heading,
+                  p(f"{str(invoice.get('status') or 'draft').upper()}  |  Revision {invoice.get('revision') or 1}"),
+                  Spacer(1, 4 * mm)])
     client = invoice.get("client") or invoice.get("clients") or {}
     if not isinstance(client, dict):
         client = {"name": client}
@@ -99,7 +118,11 @@ def invoice_pdf(invoice: dict[str, Any]) -> bytes:
         if value:
             story.extend([Spacer(1, 4 * mm), Paragraph(heading, styles["Heading2"]), p(value)])
     if renewal:
-        story.extend([Spacer(1, 4 * mm), p("Payment status confirms funds received. Service renewal is confirmed separately after provider processing.")])
+        story.extend([Spacer(1, 4 * mm), p(f"Service expiry / renewal cycle: {invoice.get('renewal_period_date') or '-'}"),
+                      p("Payment status confirms funds received. Service renewal is confirmed separately after provider processing.")])
+    elif Decimal(str(invoice.get("renewal_amount") or 0)) > 0:
+        story.extend([Spacer(1, 4 * mm), Paragraph("Annual care / renewal", styles["Heading2"]),
+                      p(f"{_money(invoice['renewal_amount'], invoice.get('renewal_currency') or currency)} | Service expiry / renewal due: {invoice.get('renewal_due_date') or '-'} | Billed separately")])
 
     def footer(canvas: Any, doc: Any) -> None:
         canvas.saveState()

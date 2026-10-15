@@ -1,14 +1,12 @@
 import { Archive, Building2, Mail, MessageCircle, MoreHorizontal, Phone, Plus, Presentation, RefreshCw, UserRound, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { SharePanel } from '../../components/SharePanel'
 import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, SearchInput, Select, StatusPill, Textarea } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, deletionPin } from '../../lib/api'
-import { formatCurrency, formatDate } from '../../lib/format'
-import { renewalMessage } from '../../lib/messages'
+import { formatCurrency, formatDate, formatLinkOpens } from '../../lib/format'
 import { whatsappUrl } from '../../lib/sharing'
-import type { Client, ClientProfile, Invoice } from '../../lib/types'
+import type { Client, ClientProfile } from '../../lib/types'
 
 const blankClient: Partial<Client> = { name: '', email: '', company: '', phone: '', address: '', status: 'active', notes: '' }
 const clientValue = (client: Client) => Object.entries(client.totals_by_currency || { LKR: client.total_value || 0 }).map(([currency, total]) => formatCurrency(total, currency)).join(' / ') || formatCurrency(0)
@@ -31,15 +29,13 @@ export function ClientsPage() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState('')
   const [profileRevision, setProfileRevision] = useState(0)
-  const [renewalInvoice, setRenewalInvoice] = useState<Invoice | null>(null)
   const loadGeneration = useRef(0)
   const profileId = searchParams.get('client')
 
   const openProfile = (client: Client) => setSearchParams(current => { const next = new URLSearchParams(current); next.set('client', String(client.id)); return next })
-  const closeProfile = () => { setRenewalInvoice(null); setSearchParams(current => { const next = new URLSearchParams(current); next.delete('client'); return next }) }
+  const closeProfile = () => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('client'); return next }) }
 
   useEffect(() => {
-    setRenewalInvoice(null)
     if (!profileId) { setProfile(null); return }
     let cancelled = false
     setProfile(null); setProfileLoading(true); setProfileError('')
@@ -49,6 +45,18 @@ export function ClientsPage() {
     return () => { cancelled = true }
   }, [profileId, profileRevision])
 
+  useEffect(() => {
+    if (!profileId) return
+    let cancelled = false
+    const refreshProfile = () => {
+      void api.clients.profile(profileId).then(result => {
+        if (!cancelled) setProfile(result)
+      }).catch(() => { /* Keep the profile visible when a background refresh fails. */ })
+    }
+    window.addEventListener('focus', refreshProfile)
+    return () => { cancelled = true; window.removeEventListener('focus', refreshProfile) }
+  }, [profileId])
+
   const profileTotals = useMemo(() => Object.entries((profile?.invoices || []).filter(invoice => invoice.status !== 'void' && invoice.invoice_kind !== 'renewal').reduce<Record<string, { total: number; paid: number; balance: number }>>((totals, invoice) => {
     const currency = invoice.currency || 'LKR'
     const current = totals[currency] || { total: 0, paid: 0, balance: 0 }
@@ -57,20 +65,6 @@ export function ClientsPage() {
     return totals
   }, {})), [profile])
   const profileRenewals = useMemo(() => (profile?.invoices || []).filter(invoice => invoice.invoice_kind !== 'renewal' && invoice.status !== 'void' && Number(invoice.renewal_amount) > 0), [profile])
-  const renewalCommunication = useMemo(() => {
-    if (!profile || !renewalInvoice) return null
-    const generated = renewalMessage({
-      client_name: profile.client.name,
-      reference: renewalInvoice.reference,
-      amount: renewalInvoice.renewal_amount,
-      currency: renewalInvoice.renewal_currency || renewalInvoice.currency,
-      due_date: renewalInvoice.renewal_due_date,
-      project_title: renewalInvoice.project_title,
-      payment_instructions: renewalInvoice.payment_instructions,
-    })
-    return generated
-  }, [profile, renewalInvoice])
-
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
     setLoading(true); setError('')
@@ -150,17 +144,15 @@ export function ClientsPage() {
           </div>
           {profile.client.notes && <section className="agreement-section"><h3>Internal notes</h3><p className="preserve-lines">{profile.client.notes}</p></section>}
           <section className="agreement-section"><h3>Project totals</h3>{profileTotals.length ? <div className="client-profile-summary">{profileTotals.map(([currency, totals]) => <article key={currency}><strong>{currency}</strong><dl><div><dt>Total project amount</dt><dd>{formatCurrency(totals.total, currency)}</dd></div><div><dt>Paid</dt><dd>{formatCurrency(totals.paid, currency)}</dd></div><div><dt>Balance</dt><dd>{formatCurrency(totals.balance, currency)}</dd></div></dl></article>)}</div> : <p>No active invoices yet.</p>}<p className="field-hint">Totals exclude void invoices. Renewals are listed separately below.</p></section>
-          <section className="agreement-section"><h3>Renewals ({profileRenewals.length})</h3><div className="client-document-list">{profileRenewals.map(invoice => <article className="client-document-card" key={invoice.id}><header><div><strong>{invoice.project_title || 'Domain & hosting renewal'}</strong><small>{invoice.reference || 'Project invoice'}</small></div></header><dl className="document-summary"><div><dt>Renewal amount</dt><dd>{formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || invoice.currency)}</dd></div><div><dt>Renewal / service expiry date</dt><dd>{formatDate(invoice.renewal_due_date)}</dd></div></dl><div className="document-toolbar"><Button variant="secondary" size="sm" icon={MessageCircle} disabled={!invoice.renewal_due_date} onClick={() => setRenewalInvoice(invoice)}>Send renewal message</Button><Link className="text-link" to={`/admin/invoices?client=${encodeURIComponent(String(profile.client.id))}&invoice=${encodeURIComponent(String(invoice.id))}`}>Open invoice</Link></div>{!invoice.renewal_due_date && <p className="field-hint">Add the service expiry / renewal date before sending this reminder.</p>}</article>)}</div>{!profileRenewals.length && <p>No annual renewals are recorded for this client yet.</p>}</section>
+          <section className="agreement-section"><h3>Renewals ({profileRenewals.length})</h3><div className="client-document-list">{profileRenewals.map(invoice => <article className="client-document-card" key={invoice.id}><header><div><strong>{invoice.project_title || 'Domain & hosting renewal'}</strong><small>{invoice.reference || 'Project invoice'}</small></div></header><dl className="document-summary"><div><dt>Renewal amount</dt><dd>{formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || invoice.currency)}</dd></div><div><dt>Renewal / service expiry date</dt><dd>{formatDate(invoice.renewal_due_date)}</dd></div></dl><div className="document-toolbar"><Link className="text-link" to={`/admin/invoices?section=renewals&renewal=${encodeURIComponent(String(invoice.id))}`}>Prepare renewal invoice</Link><Link className="text-link" to={`/admin/invoices?client=${encodeURIComponent(String(profile.client.id))}&invoice=${encodeURIComponent(String(invoice.id))}`}>Open invoice</Link></div>{!invoice.renewal_due_date && <p className="field-hint">Add the service expiry / renewal date before preparing a renewal invoice.</p>}</article>)}</div>{!profileRenewals.length && <p>No annual renewals are recorded for this client yet.</p>}</section>
           <section className="agreement-section"><h3>Invoices ({profile.invoices.length})</h3><div className="client-document-list">{profile.invoices.map(invoice => <article className="client-document-card" key={invoice.id}><header><div><strong>{invoice.project_title || 'Project invoice'}</strong><small>{invoice.reference}</small></div><StatusPill status={invoice.status} /></header><dl className="document-summary"><div><dt>Total project amount</dt><dd>{formatCurrency(Number(invoice.amount), invoice.currency)}</dd></div><div><dt>Paid</dt><dd>{formatCurrency(Number(invoice.paid_amount || 0), invoice.currency)}</dd></div><div><dt>Balance</dt><dd>{formatCurrency(Math.max(0, Number(invoice.amount) - Number(invoice.paid_amount || 0)), invoice.currency)}</dd></div><div><dt>Due</dt><dd>{formatDate(invoice.due_date)}</dd></div>{Number(invoice.renewal_amount) > 0 && <><div><dt>Annual renewal</dt><dd>{formatCurrency(Number(invoice.renewal_amount), invoice.renewal_currency || invoice.currency)}</dd></div><div><dt>Renewal date</dt><dd>{formatDate(invoice.renewal_due_date)}</dd></div></>}</dl><Link className="text-link" to={`/admin/invoices?client=${encodeURIComponent(String(profile.client.id))}&invoice=${encodeURIComponent(String(invoice.id))}`}>Open invoice</Link></article>)}</div>{!profile.invoices.length && <p>No invoices yet. Create the first invoice for this client above.</p>}</section>
           <section className="agreement-section"><h3>Payment history</h3><div className="client-document-list">{profile.invoices.flatMap(invoice => (invoice.payment_records || []).map(payment => <article key={payment.id} className="client-document-card"><header><div><strong>{formatCurrency(Number(payment.amount), payment.currency)}</strong><small>{payment.receipt_number || 'Receipt'} · {invoice.reference} · {invoice.project_title}</small></div><span>{payment.date_confirmed === false ? 'Date not recorded' : formatDate(payment.paid_at)}</span></header><p>{payment.method || 'Payment'} · {payment.reference || 'No transfer reference'}{invoice.status === 'void' ? ' · Invoice voided; payment retained' : ''}</p></article>))}</div>{!profile.invoices.some(invoice => invoice.payment_records?.length) && <p>No cleared payment records yet.</p>}</section>
-          <section className="agreement-section"><h3>Proposals & quotations ({(profile.proposals || []).length})</h3><div className="client-document-list">{(profile.proposals || []).map(proposal => <article className="client-document-card" key={proposal.id}><header><div><strong>{proposal.title}</strong><small>{proposal.reference || 'Proposal'}</small></div><StatusPill status={proposal.status} /></header><dl className="document-summary"><div><dt>Version</dt><dd>v{proposal.version || 1}</dd></div><div><dt>Created</dt><dd>{formatDate(proposal.created_at)}</dd></div><div><dt>Sent</dt><dd>{formatDate(proposal.sent_at)}</dd></div><div><dt>Viewed</dt><dd>{formatDate(proposal.viewed_at)}</dd></div></dl><Link className="text-link" to={`/admin/proposals?proposal=${encodeURIComponent(String(proposal.id))}`}>Open proposal</Link></article>)}</div>{!(profile.proposals || []).length && <p>No proposals yet. Create the first proposal for this client above.</p>}</section>
+          <section className="agreement-section"><h3>Proposals & quotations ({(profile.proposals || []).length})</h3><div className="client-document-list">{(profile.proposals || []).map(proposal => <article className="client-document-card" key={proposal.id}><header><div><strong>{proposal.title}</strong><small>{proposal.reference || 'Proposal'}</small></div><StatusPill status={proposal.status} /></header><dl className="document-summary"><div><dt>Version</dt><dd>v{proposal.version || 1}</dd></div><div><dt>Created</dt><dd>{formatDate(proposal.created_at)}</dd></div><div><dt>Sent</dt><dd>{formatDate(proposal.sent_at)}</dd></div><div><dt>Link opens</dt><dd>{formatLinkOpens(proposal.view_count)}</dd></div><div><dt>Last open</dt><dd>{formatDate(proposal.last_opened_at)}</dd></div></dl><Link className="text-link" to={`/admin/proposals?proposal=${encodeURIComponent(String(proposal.id))}`}>Open proposal</Link></article>)}</div>{!(profile.proposals || []).length && <p>No proposals yet. Create the first proposal for this client above.</p>}</section>
           <section className="agreement-section"><h3>Agreements ({profile.agreements.length})</h3><div className="client-document-list">{profile.agreements.map(agreement => <article className="client-document-card" key={agreement.id}><header><div><strong>{agreement.project_title || agreement.title}</strong><small>{agreement.reference || agreement.title}</small></div><StatusPill status={agreement.status} /></header><dl className="document-summary"><div><dt>Project amount</dt><dd>{agreement.amount != null ? formatCurrency(Number(agreement.amount), agreement.currency) : 'Not specified'}</dd></div><div><dt>Created</dt><dd>{formatDate(agreement.created_at)}</dd></div>{Number(agreement.renewal_amount) > 0 && <><div><dt>Annual renewal</dt><dd>{formatCurrency(Number(agreement.renewal_amount), agreement.renewal_currency || agreement.currency)}</dd></div><div><dt>Renewal date</dt><dd>{formatDate(agreement.renewal_due_date)}</dd></div></>}{agreement.signed_at && <><div><dt>Signed</dt><dd>{formatDate(agreement.signed_at)}</dd></div><div><dt>Signed by</dt><dd>{agreement.signer_name}{agreement.signer_job_role ? ` · ${agreement.signer_job_role}` : ''}</dd></div></>}</dl><Link className="text-link" to={`/admin/agreements?client=${encodeURIComponent(String(profile.client.id))}&search=${encodeURIComponent(agreement.reference || agreement.title)}`}>Open agreement</Link></article>)}</div>{!profile.agreements.length && <p>No agreements yet. Create an agreement using this client record above.</p>}</section>
         </div> : <ErrorState title="Client profile unavailable" message="No profile data was returned for this client. Try loading it again." onRetry={() => setProfileRevision(value => value + 1)} />}
       </Modal>
 
-      <Modal open={Boolean(renewalInvoice)} onClose={() => setRenewalInvoice(null)} size="lg" title="Send renewal message" description="Review the renewal amount, date and client message before sending.">
-        {profile && renewalInvoice && renewalCommunication && <><dl className="document-summary"><div><dt>Client</dt><dd>{profile.client.name}</dd></div><div><dt>Project</dt><dd>{renewalInvoice.project_title || 'Domain & hosting renewal'}</dd></div><div><dt>Invoice reference</dt><dd>{renewalInvoice.reference || 'Not assigned'}</dd></div><div><dt>Renewal amount</dt><dd>{formatCurrency(Number(renewalInvoice.renewal_amount), renewalInvoice.renewal_currency || renewalInvoice.currency)}</dd></div><div><dt>Renewal / service expiry date</dt><dd>{formatDate(renewalInvoice.renewal_due_date)}</dd></div></dl><SharePanel title={renewalCommunication.subject} phone={profile.client.phone} email={profile.client.email} message={renewalCommunication.body} /></>}
-      </Modal>
+
 
       <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editing === 'new' ? 'Add a client' : 'Edit client'} description="Contact details are used for agreements, invoices and reminders." footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button loading={saving} type="submit" form="client-form">{editing === 'new' ? 'Add client' : 'Save changes'}</Button></>}>
         <form id="client-form" className="form-grid" onSubmit={save}>

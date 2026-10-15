@@ -26,10 +26,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, EmptyState, ErrorState, LoadingState, Modal, PageHeader, StatusPill } from '../../components/ui'
-import { SharePanel } from '../../components/SharePanel'
+import { Button, EmptyState, ErrorState, LoadingState, PageHeader, StatusPill } from '../../components/ui'
 import { TermsOverview } from '../../components/TermsOverview'
-import { invoiceMessage, renewalMessage } from '../../lib/messages'
+import { invoiceMessage } from '../../lib/messages'
 import { ContactActions } from '../../components/ContactActions'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDate, formatRelative, getClientName, titleCase } from '../../lib/format'
@@ -53,8 +52,6 @@ export function OverviewPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [renewal, setRenewal] = useState<NonNullable<DashboardData['upcoming_renewals']>[number] | null>(null)
-  const [lateChargeAccepted, setLateChargeAccepted] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -132,10 +129,10 @@ export function OverviewPage() {
           </section>
 
           <section className="panel">
-            <header className="panel__header"><div><p className="eyebrow">Annual care</p><h2>Renewal reminders</h2></div><span className="panel-chip panel-chip--warm">{renewals.length} due</span></header>
+            <header className="panel__header"><div><p className="eyebrow">Annual care</p><h2>Upcoming renewals</h2></div><Link className="text-link" to="/admin/invoices?section=renewals">Manage renewals <ArrowRight size={15} /></Link></header>
             {renewals.length ? <div className="renewal-list">{renewals.slice(0, 5).map((renewal, index) => {
               const name = getClientName(renewal.client, renewal.client_name)
-              return <article key={renewal.id || `${name}-${index}`}><div className="renewal-list__date"><strong>{formatDate(renewal.due_date, { day: '2-digit' })}</strong><small>{formatDate(renewal.due_date, { month: 'short' })}</small></div><div><strong>{name}</strong><small>{formatCurrency(renewal.amount || 0, renewal.currency || 'LKR')} · {formatDate(renewal.due_date)}</small></div><button className="icon-button icon-button--whatsapp" type="button" onClick={() => { setLateChargeAccepted(false); setRenewal(renewal) }} aria-label={`Send renewal reminder to ${name}`}><MessageCircle size={17} /></button></article>
+              return <article key={renewal.id || `${name}-${index}`}><div className="renewal-list__date"><strong>{formatDate(renewal.due_date, { day: '2-digit' })}</strong><small>{formatDate(renewal.due_date, { month: 'short' })}</small></div><div><strong>{name}</strong><small>{formatCurrency(renewal.amount || 0, renewal.currency || 'LKR')} · {formatDate(renewal.due_date)}</small></div><Link className="icon-button" to={`/admin/invoices?section=renewals${renewal.id ? `&renewal=${encodeURIComponent(String(renewal.id))}` : ''}`} aria-label={`Prepare renewal invoice for ${name}`}><ArrowRight size={17} /></Link></article>
             })}</div> : <EmptyState icon={CalendarClock} title="No renewals approaching" description="Renewals due soon will appear here automatically." />}
           </section>
         </div>
@@ -146,7 +143,6 @@ export function OverviewPage() {
         </section>
         <section className="panel account-panel"><TermsOverview /></section>
       </>}
-      <Modal open={Boolean(renewal)} onClose={() => setRenewal(null)} title="Renewal reminder" size="lg">{renewal && <><label className="renewal-charge-consent"><input type="checkbox" checked={lateChargeAccepted} onChange={e => setLateChargeAccepted(e.target.checked)} /> This client expressly accepted the 18% late-payment surcharge.</label><SharePanel title={renewalMessage(renewal, lateChargeAccepted).subject} phone={renewal.phone} email={renewal.email} message={renewalMessage(renewal, lateChargeAccepted).body} /></>}</Modal>
     </div>
   )
 }

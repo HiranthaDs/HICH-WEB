@@ -20,12 +20,17 @@ def readiness(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, str]:
     try:
-        gateway.service.table("profiles").select("id,portal_access").limit(1).execute()
-        gateway.service.table("agreements").select("id,source_invoice_id,visiting_fee_lkr,payment_schedule,deleted_at").limit(1).execute()
-        gateway.service.table("payments").select("id,date_confirmed").limit(1).execute()
+        # Validate the projections without downloading any client records or
+        # large HTML documents on every deployment health probe.
+        gateway.service.table("profiles").select("id,portal_access").limit(0).execute()
+        gateway.service.table("agreements").select("id,source_invoice_id,visiting_fee_lkr,payment_schedule,deleted_at").limit(0).execute()
+        gateway.service.table("invoices").select("id,invoice_kind,renewal_source_invoice_id,renewal_period_date,renewal_items,share_nonce,deleted_at").limit(0).execute()
+        gateway.service.table("payments").select("id,date_confirmed").limit(0).execute()
         # Read required proposal columns so a deployment cannot report ready
         # while its quotation migration is missing from Supabase.
-        gateway.service.table("proposals").select("id,client_id,html_content,share_nonce,deleted_at").limit(1).execute()
+        gateway.service.table("proposals").select("id,client_id,html_content,share_nonce,deleted_at").limit(0).execute()
+        gateway.service.table("document_open_counts").select("document_type,document_id,open_count,last_opened_at").limit(0).execute()
+        gateway.service.table("proposal_open_events").select("proposal_id,opening_id").limit(0).execute()
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database is unavailable") from exc
     return {"status": "ready", "service": settings.app_name, "environment": settings.environment}

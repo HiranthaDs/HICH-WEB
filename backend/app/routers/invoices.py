@@ -40,6 +40,18 @@ from ..pdf import invoice_pdf
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 public_router = APIRouter(prefix="/public/invoices", tags=["public invoices"])
 INVOICE_SELECT = "*,clients(name,company,email,phone),invoice_milestones(*),payments(*)"
+RENEWAL_SOURCE_SELECT = (
+    "id,client_id,agreement_id,invoice_kind,status,project_title,renewal_due_date,"
+    "payment_method,payment_instructions"
+)
+PUBLIC_INVOICE_SELECT = (
+    "invoice_number,project_title,project_value,currency,issue_date,due_date,renewal_amount,"
+    "renewal_currency,renewal_due_date,status,deleted_at,payment_method,payment_instructions,"
+    "customer_note,revision,created_at,updated_at,invoice_kind,renewal_period_date,"
+    "renewal_late_fee,renewal_items,clients(name,company,phone),"
+    "invoice_milestones(id,title,description,amount,due_date,status,position,created_at),"
+    "payments(milestone_id,receipt_number,amount,currency,method,paid_at,date_confirmed)"
+)
 
 
 def _invoice_number() -> str:
@@ -82,7 +94,7 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
         effective_status = "paid" if total > 0 and paid >= total else "partial" if paid > 0 else "sent"
     try:
         due_date = date.fromisoformat(str(record.get("due_date"))[:10]) if record.get("due_date") else None
-        if due_date and due_date < datetime.now(COLOMBO).date() and effective_status not in {"paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
+        if due_date and due_date < datetime.now(COLOMBO).date() and effective_status not in {"draft", "paid", "void"} and paid < Decimal(str(record.get("project_value") or 0)):
             effective_status = "overdue"
     except ValueError:
         pass
@@ -199,11 +211,42 @@ def _renewal_document(source: dict[str, Any], payload: RenewalInvoiceRequest, to
         project_title=f"Domain & hosting renewal — {source.get('project_title') or 'Website'}"[:240],
         amount=total, currency=payload.currency, issue_date=today, due_date=payload.due_date,
         payment_method=source.get("payment_method"), payment_instructions=source.get("payment_instructions"),
-        customer_note=payload.customer_note, status="sent",
+        customer_note=payload.customer_note, status="draft",
         payments=[{"name": "Renewal payment", "amount": total}], invoice_kind="renewal",
         renewal_source_invoice_id=source["id"], renewal_period_date=payload.renewal_period_date,
         renewal_items=payload.items, renewal_late_fee=late, renewal_late_fee_accepted=payload.late_fee_accepted,
     )
+
+
+def _existing_renewal(invoice_id: UUID, period_date: date, gateway: SupabaseGateway) -> dict[str, Any] | None:
+    found = rows(gateway.service.table("invoices").select(INVOICE_SELECT)
+                 .eq("invoice_kind", "renewal").eq("renewal_source_invoice_id", str(invoice_id))
+                 .eq("renewal_period_date", period_date.isoformat()).neq("status", "void")
+                 .is_("deleted_at", "null").limit(1).execute())
+    return _shape(found[0]) if found else None
+
+
+def _renewal_source(invoice_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
+    # Copy stored instructions, not the display value with default bank details
+    # appended. A valid 5,000-character source must remain valid when renewed.
+    return first(gateway.service.table("invoices").select(RENEWAL_SOURCE_SELECT)
+                 .eq("id", str(invoice_id)).is_("deleted_at", "null").limit(1).execute(), "Invoice")
+
+
+@router.get("/{invoice_id}/renewal-invoice")
+def get_renewal_invoice(
+    invoice_id: UUID, period_date: date | None = Query(default=None),
+    _: Principal = Depends(current_admin), gateway: SupabaseGateway = Depends(get_supabase),
+) -> dict[str, Any]:
+    """Find the saved bill even when the browser's invoice list is stale."""
+    try:
+        source = _renewal_source(invoice_id, gateway)
+        cycle = period_date or (date.fromisoformat(str(source["renewal_due_date"])[:10]) if source.get("renewal_due_date") else None)
+        return {"invoice": _existing_renewal(invoice_id, cycle, gateway) if cycle else None}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _document_failure(exc, "load the renewal invoice") from exc
 
 
 @router.post("/{invoice_id}/renewal-invoice")
@@ -213,7 +256,13 @@ def create_renewal_invoice(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        document = _renewal_document(_get(invoice_id, gateway), payload, datetime.now(COLOMBO).date())
+        source = _renewal_source(invoice_id, gateway)
+        existing = _existing_renewal(invoice_id, payload.renewal_period_date, gateway)
+        # Opening/retrying a saved bill must not apply creation-only date checks.
+        # The database RPC still serializes concurrent first-time preparations.
+        if existing:
+            return {"invoice": existing, "reused": True}
+        document = _renewal_document(source, payload, datetime.now(COLOMBO).date())
         record = json_ready(document, exclude={"milestones", "payments", "amount", "reference", "client_name", "phone", "paid_amount"})
         record.update({"invoice_number": _invoice_number().replace("INV-", "REN-", 1),
                        "project_value": str(document.project_value), "created_by": str(principal.id)})
@@ -223,7 +272,8 @@ def create_renewal_invoice(
         }).execute(), "Renewal invoice")
         audit(gateway.service, request, settings, "prepare_renewal", "invoice", created["id"], principal,
               {"source_invoice_id": str(invoice_id), "renewal_period_date": payload.renewal_period_date.isoformat()})
-        return {"invoice": _get(UUID(created["id"]), gateway)}
+        return {"invoice": _get(UUID(created["id"]), gateway),
+                "reused": created.get("invoice_number") != record["invoice_number"]}
     except HTTPException:
         raise
     except Exception as exc:
@@ -603,7 +653,7 @@ def get_public_invoice(
     if not is_stable_public_token(token) and not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
         raise HTTPException(status_code=404, detail="Invoice link is unavailable")
     try:
-        found = rows(gateway.service.table("invoices").select(INVOICE_SELECT)
+        found = rows(gateway.service.table("invoices").select(PUBLIC_INVOICE_SELECT)
                      .in_("share_token_hash", list(invoice_token_hash_candidates(token, settings)))
                      .eq("share_active", True).limit(1).execute())
         if not found or found[0].get("deleted_at") or found[0].get("status") in {"draft", "void"}:

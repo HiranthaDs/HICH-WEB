@@ -27,6 +27,7 @@ export function AgreementSigning() {
   const { token = '' } = useParams()
   const { toast } = useToast()
   const signatureRef = useRef<SignaturePadHandle>(null)
+  const initialOpenToken = useRef<string | null>(null)
   const [agreement, setAgreement] = useState<PublicAgreement | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -61,7 +62,11 @@ export function AgreementSigning() {
     }
   }, [token])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (initialOpenToken.current === token) return
+    initialOpenToken.current = token
+    void load()
+  }, [load, token])
 
   const submit = async () => {
     if (!jobRole.trim()) return toast('Enter your job role or title.', 'error')

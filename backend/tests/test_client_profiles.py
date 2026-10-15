@@ -43,6 +43,7 @@ class Query:
 
 def gateway(data):
     data.setdefault("proposals", [])
+    data.setdefault("document_open_counts", [])
     return SimpleNamespace(service=SimpleNamespace(table=lambda table: Query(data[table])))
 
 
@@ -53,7 +54,13 @@ def test_profile_loads_all_documents_and_never_another_clients_history():
     agreements = [{"id": str(uuid4()), "client_id": str(client_id), "title": "Client agreement"}, {"id": str(uuid4()), "client_id": str(other_id), "title": "Other client agreement"}]
     proposals = [{"id": str(uuid4()), "client_id": str(client_id), "title": "Client proposal"}, {"id": str(uuid4()), "client_id": str(other_id), "title": "Other client proposal"}]
     client = {"id": str(client_id), "name": "Invoice client", "address": "Colombo", "notes": "Admin note"}
-    result = get_client_profile(client_id, None, gateway({"clients": [client], "invoices": invoices, "agreements": agreements, "proposals": proposals}))["profile"]
+    counts = [
+        {"document_type": "agreement", "document_id": agreements[0]["id"], "open_count": 4, "last_opened_at": "2026-10-14T08:00:00Z"},
+        {"document_type": "proposal", "document_id": proposals[0]["id"], "open_count": 2, "last_opened_at": "2026-10-14T07:00:00Z"},
+        {"document_type": "agreement", "document_id": agreements[1]["id"], "open_count": 9},
+    ]
+    result = get_client_profile(client_id, None, gateway({"clients": [client], "invoices": invoices, "agreements": agreements, "proposals": proposals,
+                                                   "document_open_counts": counts}))["profile"]
     assert result["client"] == client
     assert len(result["invoices"]) == 501
     assert all(row["client_id"] == str(client_id) for row in result["invoices"])
@@ -61,8 +68,10 @@ def test_profile_loads_all_documents_and_never_another_clients_history():
     assert result["invoices"][0]["balance_due"] == "20.50"
     assert len(result["agreements"]) == 1
     assert result["agreements"][0]["title"] == "Client agreement"
+    assert "view_count" not in result["agreements"][0]
     assert len(result["proposals"]) == 1
     assert result["proposals"][0]["title"] == "Client proposal"
+    assert result["proposals"][0]["view_count"] == 2
 
 
 def test_unknown_client_profile_returns_not_found():

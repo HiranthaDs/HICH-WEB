@@ -44,10 +44,12 @@ def test_readiness_checks_the_proposal_schema():
 
     assert result["status"] == "ready"
     assert ("proposals", "id,client_id,html_content,share_nonce,deleted_at") in calls
+    assert ("document_open_counts", "document_type,document_id,open_count,last_opened_at") in calls
 
 
-def test_readiness_fails_when_the_proposal_schema_is_missing():
-    db, _ = gateway("proposals")
+@pytest.mark.parametrize("table", ["proposals", "document_open_counts", "proposal_open_events", "invoices"])
+def test_readiness_fails_when_document_schema_is_missing(table):
+    db, _ = gateway(table)
 
     with pytest.raises(HTTPException) as error:
         readiness(settings(), db)

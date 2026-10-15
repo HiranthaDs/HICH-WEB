@@ -5,7 +5,7 @@ import { SharePanel } from '../../components/SharePanel'
 import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, SearchInput, Select, StatusPill, Textarea } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api } from '../../lib/api'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatLinkOpens } from '../../lib/format'
 import { proposalMessage } from '../../lib/messages'
 import { prepareProposalHtml } from '../../lib/proposals'
 import type { Client, Proposal } from '../../lib/types'
@@ -54,6 +54,8 @@ export function ProposalsPage() {
   const [deleting, setDeleting] = useState<Proposal | null>(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
   const loadGeneration = useRef(0)
+  const mutationGeneration = useRef(0)
+  const refreshInFlight = useRef(false)
   const autoCreateKey = useRef('')
   const autoOpenProposalKey = useRef('')
   const clientPickerRef = useRef<HTMLElement>(null)
@@ -62,18 +64,37 @@ export function ProposalsPage() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
+    const mutation = mutationGeneration.current
     setLoading(true)
     setError('')
     setClientError('')
     const [proposalResult, clientResult] = await Promise.allSettled([api.proposals.list(), api.clients.list()])
     if (generation !== loadGeneration.current) return
-    if (proposalResult.status === 'fulfilled') setProposals(proposalResult.value.items)
+    if (proposalResult.status === 'fulfilled') {
+      if (mutation === mutationGeneration.current) setProposals(proposalResult.value.items)
+    }
     else setError(proposalResult.reason instanceof Error ? proposalResult.reason.message : 'Proposals could not be loaded.')
     if (clientResult.status === 'fulfilled') setClients(clientResult.value.items)
     else setClientError(clientResult.reason instanceof Error ? clientResult.reason.message : 'Client records could not be loaded.')
     setLoading(false)
   }, [])
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const refreshViews = () => {
+      if (document.visibilityState !== 'visible' || refreshInFlight.current) return
+      refreshInFlight.current = true
+      const generation = loadGeneration.current
+      const mutation = mutationGeneration.current
+      void api.proposals.list().then(result => {
+        if (loadGeneration.current === generation && mutationGeneration.current === mutation) setProposals(result.items)
+      }).catch(() => { /* Keep the last loaded cards; manual refresh shows errors. */ })
+        .finally(() => { refreshInFlight.current = false })
+    }
+    window.addEventListener('focus', refreshViews)
+    const interval = setInterval(refreshViews, 30000)
+    return () => { window.removeEventListener('focus', refreshViews); clearInterval(interval) }
+  }, [])
 
   const filtered = useMemo(() => proposals.filter((proposal) => {
     const matchesQuery = !query || [proposal.reference, proposal.title, proposal.client_name, proposal.client_company, proposal.client_email]
@@ -256,6 +277,9 @@ export function ProposalsPage() {
       }
       const isNew = editing === 'new'
       const saved = isNew ? await api.proposals.create(payload) : await api.proposals.update((editing as Proposal).id, payload)
+      // A background count refresh started before this save must not restore
+      // stale proposal content or drop a newly created card.
+      mutationGeneration.current += 1
       setProposals((current) => isNew ? [saved, ...current] : current.map((item) => item.id === saved.id ? saved : item))
       setEditing(null)
       toast(isNew ? 'Proposal saved. Creating the private client link…' : 'Proposal changes saved.', 'success')
@@ -263,6 +287,7 @@ export function ProposalsPage() {
         try {
           const result = await api.proposals.share(saved.id)
           const linked = { ...saved, share_url: result.share_url || result.url, status: 'sent' }
+          mutationGeneration.current += 1
           setProposals((current) => current.map((item) => item.id === saved.id ? linked : item))
           setShared(linked)
         } catch (reason) {
@@ -281,6 +306,7 @@ export function ProposalsPage() {
     setSharing(proposal.id)
     try {
       const result = await api.proposals.share(proposal.id, { rotate })
+      mutationGeneration.current += 1
       const linked = {
         ...proposal,
         share_url: result.share_url || result.url,
@@ -303,6 +329,7 @@ export function ProposalsPage() {
     setDeletingBusy(true)
     try {
       await api.proposals.remove(deleting.id, pin)
+      mutationGeneration.current += 1
       setProposals((current) => current.filter((item) => item.id !== deleting.id))
       setDeleting(null)
       toast('Proposal deleted and its public link disabled.', 'success')
@@ -321,7 +348,7 @@ export function ProposalsPage() {
       <PageHeader
         eyebrow="Sales documents"
         title="Proposals & quotations"
-        description="Paste complete HTML from ChatGPT or another AI tool, connect it to a client and send one polished private link."
+        description="Paste complete HTML, connect it to a client and send one private link. Link opens count displayed visits, including repeat visits and your own opens of the client link."
         action={<Button icon={Plus} onClick={() => void openEditor()}>New proposal</Button>}
       />
       <section className="toolbar panel panel--flat">
@@ -333,6 +360,8 @@ export function ProposalsPage() {
           <Button variant="ghost" size="sm" icon={RefreshCw} loading={loading} onClick={load}>Refresh</Button>
         </div>
       </section>
+
+      {proposals.some(proposal => proposal.view_count == null) && <div className="data-notice" role="status">Link-open tracking is unavailable. Ask your administrator to check the database migrations; proposals can still be opened and shared.</div>}
 
       {error && proposals.length > 0 && <div className="data-notice" role="status"><span>Refresh failed: {error} The last successfully loaded proposals remain visible.</span><Button type="button" variant="ghost" size="sm" onClick={load}>Retry</Button></div>}
 
@@ -352,8 +381,8 @@ export function ProposalsPage() {
                 <p><Link className="proposal-client-link" to={`/admin/clients?client=${encodeURIComponent(String(proposal.client_id))}`}>{[proposal.client_company, proposal.client_name].filter(Boolean).join(' · ') || 'Open linked client'}</Link></p>
               </div>
               <dl>
-                <div><dt>Version</dt><dd>v{proposal.version || 1}</dd></div>
-                <div><dt>{proposal.viewed_at ? 'Last viewed' : 'Created'}</dt><dd>{formatDate(proposal.viewed_at || proposal.created_at)}</dd></div>
+                <div><dt>Link opens</dt><dd>{formatLinkOpens(proposal.view_count)}</dd></div>
+                <div><dt>{proposal.last_opened_at ? 'Last open' : 'Created'}</dt><dd>{formatDate(proposal.last_opened_at || proposal.created_at)}</dd></div>
               </dl>
               <footer>
                 <Button size="sm" variant="secondary" icon={Link2} loading={sharing === proposal.id} onClick={() => void share(proposal)}>{proposal.share_url ? 'Copy link' : 'Create link'}</Button>

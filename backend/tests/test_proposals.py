@@ -48,7 +48,41 @@ class Query:
 
 
 def gateway(records):
-    return SimpleNamespace(service=SimpleNamespace(table=lambda table: Query(records[table])))
+    records.setdefault("document_open_counts", [])
+    openings = set()
+
+    class ViewRpc:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def execute(self):
+            matches = [row for row in records["proposals"] if row["id"] == self.payload["p_proposal_id"]
+                       and row.get("access_token_hash") == self.payload["p_access_token_hash"]
+                       and row.get("status") in {"sent", "viewed"} and row.get("deleted_at") is None]
+            if not matches:
+                return SimpleNamespace(data=[])
+            row = matches[0]
+            opening_key = (row["id"], self.payload["p_opening_id"])
+            first_opened = row["status"] == "sent" and opening_key not in openings
+            if first_opened:
+                row.update({"status": "viewed", "viewed_at": "2026-10-14T08:00:00Z"})
+            counters = records["document_open_counts"]
+            count = next((item for item in counters if item["document_type"] == "proposal" and item["document_id"] == row["id"]), None)
+            if count is None:
+                count = {"document_type": "proposal", "document_id": row["id"], "open_count": 0}
+                counters.append(count)
+            if opening_key not in openings:
+                count["open_count"] += 1
+                openings.add(opening_key)
+                count["last_opened_at"] = "2026-10-14T08:00:00Z"
+            return SimpleNamespace(data=[{"document_status": row["status"], "first_viewed_at": row["viewed_at"],
+                                          "view_count": count["open_count"], "last_opened_at": count["last_opened_at"],
+                                          "first_opened": first_opened}])
+
+    return SimpleNamespace(service=SimpleNamespace(
+        table=lambda table: Query(records[table]),
+        rpc=lambda name, payload: ViewRpc(payload) if name == "record_proposal_open" else None,
+    ))
 
 
 def settings():
@@ -200,11 +234,22 @@ def test_sharing_and_first_public_view_keep_one_stable_link(monkeypatch):
     assert shared["share_url"].endswith(f"/proposal/{token}")
 
     public = proposals.public_proposal(token, request(), settings(), db)["proposal"]
-    assert public["status"] == "viewed"
+    assert public["status"] == "sent"
+    assert records["document_open_counts"] == []
+    opening = proposals.ProposalOpenRequest(opening_id=uuid4())
+    proposals.open_proposal(token, opening, request(), settings(), db)
     assert public["title"] == record["title"]
     assert records["proposals"][0]["viewed_at"]
     viewed_at = records["proposals"][0]["viewed_at"]
     sent_at = records["proposals"][0]["sent_at"]
+    assert records["document_open_counts"][0]["open_count"] == 1
+
+    proposals.public_proposal(token, request(), settings(), db)
+    proposals.open_proposal(token, opening, request(), settings(), db)
+    assert records["document_open_counts"][0]["open_count"] == 1
+    proposals.open_proposal(token, proposals.ProposalOpenRequest(opening_id=uuid4()), request(), settings(), db)
+    assert records["document_open_counts"][0]["open_count"] == 2
+    assert records["proposals"][0]["viewed_at"] == viewed_at
 
     copied_again = proposals.share_proposal(
         UUID(record["id"]), request(), ProposalShareRequest(), principal, settings(), db,
@@ -213,3 +258,34 @@ def test_sharing_and_first_public_view_keep_one_stable_link(monkeypatch):
     assert records["proposals"][0]["status"] == "viewed"
     assert records["proposals"][0]["sent_at"] == sent_at
     assert records["proposals"][0]["viewed_at"] == viewed_at
+
+
+def test_opening_id_is_scoped_to_its_proposal(monkeypatch):
+    first_record, first_token = proposal_record("sent")
+    second_record, second_token = proposal_record("sent")
+    records = {"proposals": [first_record, second_record]}
+    db = gateway(records)
+    monkeypatch.setattr(proposals, "audit", lambda *args, **kwargs: None)
+    opening = proposals.ProposalOpenRequest(opening_id=uuid4())
+    proposals.open_proposal(first_token, opening, request(), settings(), db)
+    proposals.open_proposal(second_token, opening, request(), settings(), db)
+    assert [item["open_count"] for item in records["document_open_counts"]] == [1, 1]
+
+
+@pytest.mark.parametrize("state", ["revoked", "archived", "deleted"])
+def test_invalid_public_links_cannot_record_opens(monkeypatch, state):
+    record, token = proposal_record("sent")
+    if state == "revoked":
+        record["access_token_hash"] = "f" * 64
+    elif state == "archived":
+        record["status"] = "archived"
+    else:
+        record["deleted_at"] = "2026-10-15T00:00:00Z"
+    records = {"proposals": [record]}
+    db = gateway(records)
+    monkeypatch.setattr(proposals, "audit", lambda *args, **kwargs: None)
+    with pytest.raises(HTTPException) as exc:
+        proposals.open_proposal(token, proposals.ProposalOpenRequest(opening_id=uuid4()), request(), settings(), db)
+    assert exc.value.status_code == 404
+    assert records["document_open_counts"] == []
+

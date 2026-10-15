@@ -1907,6 +1907,99 @@ details.clause-nav { display: block; background: #f8f9ff; padding: 17px; border:
   .toast__close { width: 36px; height: 36px; }
   .public-invoice .document-summary { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Selected work: readable cards and complete project previews at every width. */
+.public-section--work { background: #f7f8ff; }
+.public-section--work .section-heading { margin-bottom: 30px; }
+.public-section--work .section-heading > p { max-width: 365px; }
+.portfolio-filters { align-items: center; margin-bottom: 26px; }
+.portfolio-filters > div > button { min-height: 42px; font-weight: 700; }
+.project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: stretch; }
+.project-card, .project-card:nth-child(n+3) { min-width: 0; display: flex; flex-direction: column; padding: 10px; border: 1px solid #e7e9f8; border-radius: 26px; background: #fff; box-shadow: 0 12px 36px rgba(28, 35, 105, .055); transition: transform .25s ease, box-shadow .25s ease; }
+.project-card:hover { transform: translateY(-4px); box-shadow: 0 18px 44px rgba(28, 35, 105, .1); }
+.project-card--featured { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(290px, .85fr); align-items: stretch; }
+.project-card__visual, .project-card--featured .project-card__visual { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 18px; background: #e9edff; }
+.project-card--featured .project-card__visual { height: clamp(340px, 36vw, 500px); min-height: 0; aspect-ratio: auto; }
+.project-card__visual img { padding: 12px; object-fit: contain; object-position: center; }
+.project-card__visual:hover img { transform: scale(1.015); }
+.project-card__visual .project-placeholder { min-height: 100%; }
+.project-card__open { top: 16px; right: 16px; opacity: 1; transform: none; box-shadow: 0 3px 14px rgba(22, 28, 82, .13); }
+.project-card__visual:hover .project-card__open { transform: translate(2px, 2px); }
+.project-card__count { font-size: 10px; text-transform: none; letter-spacing: 0; }
+.project-card__body { display: flex; flex: 1; flex-direction: column; align-items: flex-start; padding: 24px 20px 18px; }
+.project-card--featured .project-card__body { justify-content: center; padding: clamp(24px, 4vw, 52px); }
+.project-card__body > .project-card__heading { width: 100%; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.project-card__category { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: 10px; letter-spacing: .055em; }
+.project-card__number { color: #979bb0; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
+.project-card__body h3 { margin: 0; text-align: left; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.18; overflow-wrap: anywhere; }
+.project-card--featured .project-card__body h3 { font-size: clamp(26px, 3vw, 40px); }
+.project-card__body p { max-width: 50ch; margin: 12px 0 22px; color: #62677d; font-size: 13px; line-height: 1.7; }
+.project-card__body .text-link { min-height: 44px; margin-top: auto; }
+.project-card--featured .project-card__body .text-link { margin-top: 4px; }
+
+.modal--xl:has(.case-study) { width: min(1100px, 100%); }
+.modal--xl:has(.case-study) .modal__header { padding: 24px 30px 20px; }
+.modal--xl:has(.case-study) .modal__header h2 { font-size: clamp(22px, 2.4vw, 30px); }
+.modal--xl:has(.case-study) .modal__body { padding: 22px 30px 30px; }
+.case-study { grid-template-columns: minmax(0, 1.45fr) minmax(250px, .8fr); gap: 32px; align-items: start; }
+.case-study__gallery, .case-study__copy { min-width: 0; }
+.case-study__image { position: relative; height: min(54dvh, 540px); min-height: 300px; display: grid; place-items: center; overflow: hidden; border: 1px solid #e4e8f5; border-radius: 18px; background: #eff2fb; }
+.case-study__image > img { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
+.case-study__image > .project-placeholder { width: 100%; height: 100%; max-height: 100%; border-radius: 0; }
+.case-study__image-bar { display: flex; align-items: center; gap: 15px; min-height: 52px; }
+.case-study__image-bar > span { color: var(--ink); font-size: 12px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; }
+.case-study__image-bar > a { display: inline-flex; align-items: center; gap: 5px; color: var(--brand); font-size: 11px; font-weight: 750; }
+.case-study__image-controls { display: flex; gap: 7px; margin-left: auto; }
+.case-study__image-controls button { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 11px; background: #fff; cursor: pointer; }
+.case-study__image-controls button:hover, .case-study__project-nav button:hover:not(:disabled) { color: var(--brand); border-color: #adb5ff; background: var(--brand-light); }
+.case-study__thumbs { max-width: 100%; gap: 9px; margin-top: 2px; padding: 3px 2px 7px; overflow-x: auto; overscroll-behavior-inline: contain; }
+.case-study__thumbs button { flex: 0 0 76px; width: 76px; height: 64px; aspect-ratio: auto; padding: 3px; border-radius: 11px; background: #f2f4fa; }
+.case-study__thumbs img { object-fit: contain; border-radius: 6px; }
+.case-study__copy { align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; padding: 8px 0 0; }
+.case-study__copy .case-study__eyebrow { margin: 0 0 13px; color: var(--brand); font-size: 10px; font-weight: 800; line-height: 1.5; letter-spacing: .13em; text-transform: uppercase; }
+.case-study__copy > p:not(.case-study__eyebrow) { margin: 0 0 18px; color: var(--ink-2); font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.case-study__copy small { margin-bottom: 22px; font-size: 12px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.case-study__copy > .button { min-height: 46px; }
+.case-study__project-nav { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: auto; padding-top: 28px; }
+.case-study__project-nav button { min-height: 42px; display: inline-flex; align-items: center; gap: 4px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 11px; background: #fff; font-size: 11px; font-weight: 750; cursor: pointer; }
+.case-study__project-nav button:disabled { color: #a5a8b8; cursor: not-allowed; }
+
+@media (max-width: 760px) {
+  .public-section--work { padding-block: 62px 70px; }
+  .public-section--work .section-heading { gap: 14px; margin-bottom: 22px; }
+  .public-section--work .section-heading h2 { font-size: clamp(29px, 8vw, 40px); }
+  .portfolio-filters { gap: 12px; margin-bottom: 22px; }
+  .portfolio-filters > div { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding: 2px 1px 9px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  .portfolio-filters > div > button { flex: 0 0 auto; min-height: 44px; scroll-snap-align: start; }
+  .portfolio-filters > .button { min-height: 40px; }
+  .project-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .project-card, .project-card--featured { display: flex; flex-direction: column; grid-column: auto; padding: 8px; border-radius: 22px; }
+  .project-card__visual, .project-card--featured .project-card__visual { height: auto; min-height: 0; aspect-ratio: 4 / 3; border-radius: 16px; }
+  .project-card__visual img { padding: 9px; }
+  .project-card__visual:hover img { transform: none; }
+  .project-card__body, .project-card--featured .project-card__body { padding: 18px 14px 12px; }
+  .project-card__body > .project-card__heading { flex-direction: row; align-items: center; margin-bottom: 10px; }
+  .project-card__body h3, .project-card--featured .project-card__body h3 { font-size: clamp(21px, 6vw, 28px); }
+  .project-card__body p { margin: 10px 0 14px; font-size: 12px; line-height: 1.65; }
+  .project-card__open { width: 38px; height: 38px; top: 11px; right: 11px; }
+  .modal--xl:has(.case-study) .modal__header { padding: 17px 18px 15px; }
+  .modal--xl:has(.case-study) .modal__body { padding: 16px 18px max(22px, env(safe-area-inset-bottom)); }
+  .case-study { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .case-study__image { height: clamp(220px, 41dvh, 420px); min-height: 0; border-radius: 14px; }
+  .case-study__image-bar { min-height: 48px; gap: 10px; }
+  .case-study__image-controls button { width: 42px; height: 42px; }
+  .case-study__copy { padding: 0 2px; }
+  .case-study__copy > .button { width: 100%; }
+  .case-study__project-nav { gap: 8px; padding-top: 22px; }
+  .case-study__project-nav button { flex: 1 1 130px; justify-content: center; }
+}
+
+@media (max-width: 380px) {
+  .case-study__image-bar { flex-wrap: wrap; padding-block: 8px; }
+  .case-study__image-bar > a { margin-right: auto; }
+  .case-study__image-controls { margin-left: 0; }
+  .case-study__thumbs button { flex-basis: 66px; width: 66px; height: 58px; }
+}
 /* Service charges remain readable when preparing a separate renewal bill. */
 .renewal-service-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(110px, 1fr) auto; gap: 12px; align-items: end; margin: 16px 0; }
 .renewal-service-row .icon-button { margin-bottom: 3px; }

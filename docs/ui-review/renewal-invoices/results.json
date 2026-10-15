@@ -2,10 +2,13 @@
   "checks": [
     "Pending invoices are the default, Completed is separate, and the source invoice has one Actions button",
     "Ten phases save without increasing the agreed total or changing partial receipts; cent rounding and fully-paid rejection",
+    "Incomplete renewal setup saves the annual charge and continues to renewal preparation without opening the original project invoice message",
+    "Deep link opens renewal form, custom descriptions survive service changes, authoritative cycle lookup reuses a partial invoice missing from the list",
     "Separate domain/hosting renewal, independent currency, accepted itemised 18% fee, partial then final payment and renewal-only paid message",
-    "Opening the same renewal cycle reuses its paid invoice",
+    "All invoice sections remain visible on mobile; renewal CSV export includes only the selected paid cycle",
+    "Renewals workspace keeps paid history after annual date advances, separates next-year cycles from Needs action, and retries failed sharing from the saved review without an overdue reminder or duplicate bill",
     "Client invoice contains only renewal services, surcharge and actual receipts; form and public invoice fit 320/390 px"
   ],
   "errors": [],
-  "interceptedWrites": 8
+  "interceptedWrites": 10
 }

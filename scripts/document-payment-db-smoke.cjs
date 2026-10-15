@@ -39,6 +39,8 @@ const { randomUUID } = require('node:crypto');
     await db.query("update invoices set status='void' where id=$1", [oldVoid]);
     const oldRevision = (await one('select revision from invoices where id=$1', [oldVoid])).revision;
     for (const name of migrations.filter(name => name >= '20261011')) await apply(name);
+    await db.exec(fs.readFileSync(path.resolve(__dirname, '../supabase/tests/renewal_invoices.sql'), 'utf8'));
+    await db.exec(fs.readFileSync(path.resolve(__dirname, '../supabase/tests/proposal_opens.sql'), 'utf8'));
     const migrated = await one('select * from payments where id=$1', [oldReceipt]);
     assert.match(migrated.receipt_number, /^RCT-\d{8,}$/);
     assert.equal(migrated.date_confirmed, false);
@@ -77,6 +79,6 @@ const { randomUUID } = require('node:crypto');
     assert.equal(copied.share_nonce, nonce);
     const rotated = await one('select * from publish_invoice_link($1,$2,$3,true)', [project, randomUUID(), 'c'.repeat(64)]);
     assert.equal(rotated.share_token_hash, 'c'.repeat(64));
-    console.log('PASS: all migrations; retained void receipts; retry deduplication; overpayment; milestone ownership; receipt moves; annual renewal advancement; permanent publication and rotation.');
+    console.log('PASS: all migrations; proposal open counts and retry deduplication; renewal draft preparation, cycle reuse and publication; retained void receipts; retry deduplication; overpayment; milestone ownership; receipt moves; annual renewal advancement; permanent publication and rotation.');
   } finally { await db.close(); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

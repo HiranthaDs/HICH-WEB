@@ -10,7 +10,7 @@ export const formatCurrency = (value = 0, currency = 'LKR') => {
   }
 }
 
-export const formatDate = (value?: string, options?: Intl.DateTimeFormatOptions) => {
+export const formatDate = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -20,6 +20,8 @@ export const formatDate = (value?: string, options?: Intl.DateTimeFormatOptions)
     year: 'numeric',
   }) }).format(date)
 }
+
+export const formatLinkOpens = (value?: number | null) => value == null ? 'Unavailable' : value.toLocaleString('en-LK')
 
 export const formatRelative = (value?: string) => {
   if (!value) return 'Recently'

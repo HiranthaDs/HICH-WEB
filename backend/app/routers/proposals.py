@@ -7,10 +7,12 @@ from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel
 
 from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
 from ..dependencies import Principal, current_admin, require_deletion_pin
+from ..document_views import attach_open_counts, record_proposal_open
 from ..models import ProposalCreate, ProposalShareRequest, ProposalUpdate, json_ready
 from ..security import content_sha256, stable_public_token, stable_public_token_hash, utcnow
 from ..supabase_client import SupabaseGateway, get_supabase
@@ -21,6 +23,7 @@ public_router = APIRouter(prefix="/public/proposals", tags=["public"])
 
 PROPOSAL_SELECT = "*,clients(id,name,company,email,phone,address,status)"
 PROPOSAL_LIST_SELECT = "id,public_id,client_id,client_name,client_email,client_phone,reference,title,status,version,access_token_hash,share_nonce,sent_at,viewed_at,created_at,updated_at,clients(id,name,company,email,phone,address,status)"
+PROPOSAL_PUBLIC_SELECT = "id,public_id,reference,title,html_content,status,version,client_name,created_at,sent_at,viewed_at,clients(name)"
 DOCUMENT_FIELDS = {"client_id", "reference", "title", "html_content"}
 
 
@@ -85,18 +88,20 @@ def _public_shape(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _proposal_by_id(proposal_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
-    return first(
+    record = first(
         gateway.service.table("proposals").select(PROPOSAL_SELECT).is_("deleted_at", "null")
         .eq("id", str(proposal_id)).limit(1).execute(),
         "Proposal",
     )
+    attach_open_counts(gateway, "proposal", [record])
+    return record
 
 
 def _proposal_by_token(token: str, gateway: SupabaseGateway) -> dict[str, Any]:
     if len(token) < 32 or len(token) > 200:
         raise HTTPException(status_code=404, detail="Proposal not found")
     return first(
-        gateway.service.table("proposals").select(PROPOSAL_SELECT).eq("access_token_hash", _token_hash(token))
+        gateway.service.table("proposals").select(PROPOSAL_PUBLIC_SELECT).eq("access_token_hash", _token_hash(token))
         .is_("deleted_at", "null").in_("status", ["sent", "viewed"]).limit(1).execute(),
         "Proposal",
     )
@@ -132,6 +137,7 @@ def list_proposals(
         if proposal_status:
             query = query.eq("status", proposal_status)
         result = rows(query.range(offset, offset + limit - 1).execute())
+        attach_open_counts(gateway, "proposal", result)
         items = [_shape(item, settings) for item in result]
         return {"proposals": {"items": items, "total": len(items)}}
     except Exception as exc:
@@ -308,13 +314,40 @@ def public_proposal(
 ) -> dict[str, Any]:
     try:
         record = _proposal_by_token(token, gateway)
-        if record.get("status") == "sent":
-            viewed_at = utcnow().isoformat()
-            gateway.service.table("proposals").update({"status": "viewed", "viewed_at": viewed_at}).eq("id", record["id"]).eq("status", "sent").execute()
-            record.update({"status": "viewed", "viewed_at": viewed_at})
-            audit(gateway.service, request, settings, "view", "proposal", record["id"])
         return {"proposal": _public_shape(record)}
     except HTTPException:
         raise
     except Exception as exc:
         raise db_failure(exc, "load the proposal") from exc
+
+
+class ProposalOpenRequest(BaseModel):
+    opening_id: UUID
+
+
+@public_router.post("/{token}/open", status_code=status.HTTP_204_NO_CONTENT)
+def open_proposal(
+    token: str,
+    payload: ProposalOpenRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    gateway: SupabaseGateway = Depends(get_supabase),
+) -> Response:
+    try:
+        if len(token) < 32 or len(token) > 200:
+            raise HTTPException(status_code=404, detail="Proposal not found")
+        # The document body is unnecessary here; the RPC rechecks the token
+        # under a row lock before updating status and counters atomically.
+        record = first(
+            gateway.service.table("proposals").select("id,access_token_hash")
+            .eq("access_token_hash", _token_hash(token)).is_("deleted_at", "null")
+            .in_("status", ["sent", "viewed"]).limit(1).execute(), "Proposal",
+        )
+        opened = record_proposal_open(gateway, record, str(payload.opening_id))
+        if opened["first_opened"]:
+            audit(gateway.service, request, settings, "view", "proposal", record["id"])
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_failure(exc, "record the proposal open") from exc

@@ -24,6 +24,7 @@ import type {
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 let refreshRequest: Promise<boolean> | null = null
+const publicReads = new Map<string, Promise<unknown>>()
 
 function refreshSession() {
   if (!refreshRequest) {
@@ -136,6 +137,16 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) return response.json() as Promise<T>
   return response.text() as Promise<T>
+}
+
+// Share concurrent reads (including React's development effect replay), but never
+// cache a completed client document. Reloads must revalidate revoked/updated links.
+function readPublic<T>(path: string): Promise<T> {
+  const pending = publicReads.get(path)
+  if (pending) return pending as Promise<T>
+  const operation = request<T>(path).finally(() => { publicReads.delete(path) })
+  publicReads.set(path, operation)
+  return operation
 }
 
 const unwrap = <T>(payload: unknown, keys: string[]): T => {
@@ -254,6 +265,7 @@ export const api = {
     pdf: (id: Agreement['id'], reference = 'agreement') => download(`/agreements/${id}/pdf`, `${reference}.pdf`),
   },
   invoices: {
+    async getRenewal(id: Invoice['id'], periodDate?: string) { return unwrap<Invoice | null>(await request(`/invoices/${id}/renewal-invoice${periodDate ? `?period_date=${encodeURIComponent(periodDate)}` : ''}`), ['invoice']) },
     async createRenewal(id: Invoice['id'], data: { renewal_period_date: string; items: NonNullable<Invoice['renewal_items']>; currency: string; due_date: string; apply_late_fee: boolean; late_fee_accepted: boolean; customer_note?: string }) { return unwrap<Invoice>(await request(`/invoices/${id}/renewal-invoice`, { method: 'POST', body: data }), ['invoice']) },
     async get(id: Invoice['id']) { return unwrap<Invoice>(await request(`/invoices/${id}`), ['invoice']) },
     recordPayment: (id: Invoice['id'], data: { idempotency_key: string; milestone_id?: string | null; amount: number; currency: string; method?: string; reference?: string; paid_at: string }) => request<{ invoice: Invoice; payment: PaymentRecord }>(`/invoices/${id}/payments`, { method: 'POST', body: data }),
@@ -283,9 +295,10 @@ export const api = {
     removeImage: (projectId: PortfolioProject['id'], imageId: string) => request<void>(`/portfolio/${projectId}/images/${imageId}`, { method: 'DELETE' }),
   },
   async audit() { return unwrapList<AuditEvent>(await request('/audit'), ['events', 'audit']) },
-  async publicPortfolio() { return unwrapList<PortfolioProject>(await request('/public/portfolio'), ['projects', 'portfolio']) },
-  async publicInvoice(token: string) { return unwrap<Invoice>(await request(`/public/invoices/${encodeURIComponent(token)}`), ['invoice']) },
-  async publicProposal(token: string) { return unwrap<Proposal>(await request(`/public/proposals/${encodeURIComponent(token)}`), ['proposal']) },
+  async publicPortfolio() { return unwrapList<PortfolioProject>(await readPublic('/public/portfolio'), ['projects', 'portfolio']) },
+  async publicInvoice(token: string) { return unwrap<Invoice>(await readPublic(`/public/invoices/${encodeURIComponent(token)}`), ['invoice']) },
+  async publicProposal(token: string) { return unwrap<Proposal>(await readPublic(`/public/proposals/${encodeURIComponent(token)}`), ['proposal']) },
+  recordProposalOpen: (token: string, openingId: string) => request<void>(`/public/proposals/${encodeURIComponent(token)}/open`, { method: 'POST', body: { opening_id: openingId } }),
   publicAgreementPdf: (token: string) => download(`/public/agreements/${encodeURIComponent(token)}/pdf`, 'hich-signed-agreement.pdf'),
   publicInvoicePdf: (token: string) => download(`/public/invoices/${encodeURIComponent(token)}/pdf`, 'hich-invoice.pdf'),
   operations: {
@@ -304,12 +317,12 @@ export const api = {
     async create(data: Partial<PortfolioCollection>) { return unwrap<PortfolioCollection>(await request('/collections', { method: 'POST', body: data }), ['collection']) },
     async update(id: string, data: Partial<PortfolioCollection>) { return unwrap<PortfolioCollection>(await request(`/collections/${id}`, { method: 'PUT', body: data }), ['collection']) },
     remove: (id: string) => request(`/collections/${id}`, { method: 'DELETE' }),
-    async public(token: string) { return request<{ collection: PortfolioCollection; projects: PortfolioProject[] }>(`/public/collections/${encodeURIComponent(token)}`) },
+    async public(token: string) { return readPublic<{ collection: PortfolioCollection; projects: PortfolioProject[] }>(`/public/collections/${encodeURIComponent(token)}`) },
   },
-  async publicChange(token: string) { return unwrap<ChangeOrder>(await request(`/public/changes/${encodeURIComponent(token)}`), ['change']) },
+  async publicChange(token: string) { return unwrap<ChangeOrder>(await readPublic(`/public/changes/${encodeURIComponent(token)}`), ['change']) },
   async approveChange(token: string, data: { signer_name: string; signer_job_role: string; consent: boolean }) { return unwrap<ChangeOrder>(await request(`/public/changes/${encodeURIComponent(token)}/approve`, { method: 'POST', body: data }), ['change']) },
   async publicAgreement(token: string) {
-    const payload = await request<unknown>(`/public/agreements/${encodeURIComponent(token)}`)
+    const payload = await readPublic<unknown>(`/public/agreements/${encodeURIComponent(token)}`)
     return unwrap<PublicAgreement>(payload, ['agreement'])
   },
   async signAgreement(token: string, data: SignAgreementPayload) {

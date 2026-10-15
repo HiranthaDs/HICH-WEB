@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 
 from ..config import Settings, get_settings
 from ..data import audit, db_failure, first, rows
+from ..document_views import attach_open_counts
 from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..models import ClientCreate, ClientUpdate, json_ready
 from ..supabase_client import SupabaseGateway, get_supabase
@@ -141,8 +142,9 @@ def get_client_profile(
     try:
         client = first(gateway.service.table("clients").select("*").is_("deleted_at", "null").eq("id", str(client_id)).limit(1).execute(), "Client")
         invoices = [invoice_shape(record) for record in documents("invoices", INVOICE_SELECT)]
-        agreements = documents("agreements", "id,client_id,reference,title,project_title,status,amount,currency,commercial_details_visible,renewal_amount,renewal_currency,renewal_due_date,created_at,updated_at,sent_at,signed_at,signer_name,signer_job_role,expires_at,version")
+        agreements = documents("agreements", "id,client_id,reference,title,project_title,status,amount,currency,commercial_details_visible,renewal_amount,renewal_currency,renewal_due_date,created_at,updated_at,sent_at,viewed_at,signed_at,signer_name,signer_job_role,expires_at,version")
         proposals = documents("proposals", "id,public_id,client_id,reference,title,status,version,created_at,updated_at,sent_at,viewed_at")
+        attach_open_counts(gateway, "proposal", proposals)
         return {"profile": {"client": client, "invoices": invoices, "agreements": agreements, "proposals": proposals}}
     except HTTPException:
         raise

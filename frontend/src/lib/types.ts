@@ -65,6 +65,8 @@ export interface Proposal {
   updated_at?: string
   sent_at?: string
   viewed_at?: string
+  view_count?: number | null
+  last_opened_at?: string | null
 }
 
 export type AgreementStatus = 'draft' | 'sent' | 'viewed' | 'signed' | 'expired' | 'void' | string
