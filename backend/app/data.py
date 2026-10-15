@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+import time
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from fastapi import HTTPException, Request, status
 from supabase import Client
@@ -12,6 +14,57 @@ from .security import client_ip
 
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
+
+
+TRANSIENT_DATABASE_CODES = frozenset({
+    "PGRST000", "PGRST001", "PGRST002", "PGRST003",
+    "40001", "40P01", "53300", "53400", "57014", "57P01", "57P02", "57P03",
+})
+TRANSIENT_DATABASE_TEXT = (
+    "connection reset", "connection refused", "connection terminated", "connection closed",
+    "could not connect", "failed to connect", "server disconnected", "temporarily unavailable",
+    "timeout", "timed out", "pool timeout", "too many connections", "bad gateway",
+    "service unavailable", "gateway timeout",
+)
+
+
+def database_error_code(exc: Exception) -> str | None:
+    code = getattr(exc, "code", None)
+    if code:
+        return str(code).upper()
+    details = exc.args[0] if exc.args else None
+    if isinstance(details, dict) and details.get("code"):
+        return str(details["code"]).upper()
+    return None
+
+
+def transient_database_error(exc: Exception) -> bool:
+    """Identify retryable read failures without retrying validation/data errors."""
+    code = database_error_code(exc)
+    if code in TRANSIENT_DATABASE_CODES or (code and code.startswith("08")):
+        return True
+    name = type(exc).__name__.casefold()
+    text = str(exc).casefold()
+    return any(marker in name for marker in ("timeout", "connecterror", "networkerror")) or any(
+        marker in text for marker in TRANSIENT_DATABASE_TEXT
+    )
+
+
+def retry_database_read(operation: Callable[[], T], *, attempts: int = 3, base_delay: float = 0.15) -> T:
+    """Retry an idempotent database read only when the failure is transient."""
+    if attempts < 1:
+        raise ValueError("attempts must be positive")
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except Exception as exc:
+            if attempt + 1 >= attempts or not transient_database_error(exc):
+                raise
+            logger.warning("Transient database read failed (attempt %s/%s): %s", attempt + 1, attempts, exc)
+            if base_delay > 0:
+                time.sleep(base_delay * (2 ** attempt))
+    raise RuntimeError("unreachable")
 
 
 def rows(response: Any) -> list[dict[str, Any]]:

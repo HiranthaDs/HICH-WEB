@@ -89,6 +89,7 @@ def calendar_report(
                 "project_title": invoice.get("project_title"),
                 "status": "received",
                 "invoice_status": invoice.get("status"),
+                "invoice_kind": invoice.get("invoice_kind") or "project",
                 "method": payment.get("method"),
                 "payment_reference": payment.get("reference"),
             }
@@ -121,6 +122,7 @@ def calendar_report(
                 "project_title": invoice.get("project_title"),
                 "status": invoice.get("status") or "sent",
                 "invoice_status": invoice.get("status"),
+                "invoice_kind": invoice.get("invoice_kind") or "project",
             }
         )
 
@@ -177,6 +179,7 @@ def calendar_report(
                 "project_title": invoice.get("project_title"),
                 "status": bill.get("status") if bill else "scheduled",
                 "invoice_status": bill.get("status") if bill else None,
+                "invoice_kind": "renewal",
             }
         )
 
@@ -209,6 +212,7 @@ def calendar_report(
                 "reference": agreement.get("reference"),
                 "project_title": agreement.get("project_title") or agreement.get("title"),
                 "status": "scheduled",
+                "invoice_kind": "renewal",
             }
         )
 

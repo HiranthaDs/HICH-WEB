@@ -25,6 +25,8 @@ import type {
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 let refreshRequest: Promise<boolean> | null = null
 const publicReads = new Map<string, Promise<unknown>>()
+const listReads = new Map<string, Promise<Paginated<unknown>>>()
+let initialPublicRead: { path: string; promise: Promise<unknown>; timeout: number } | undefined
 
 function refreshSession() {
   if (!refreshRequest) {
@@ -94,7 +96,10 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
       ? options.body as FormData
       : JSON.stringify(options.body)
   const method = String(options.method || 'GET').toUpperCase()
-  const maxTransientAttempts = path.startsWith('/public/') ? 3 : 1
+  // GET requests are safe to repeat. This covers short Supabase/hosting
+  // connection interruptions without ever replaying invoice, payment, share,
+  // signature, email or other mutations.
+  const maxTransientAttempts = method === 'GET' ? 3 : 0
   let response: Response
   try {
     response = await fetch(`${API_ROOT}${path}`, {
@@ -122,7 +127,11 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
 
   const renderHasNoServer = response.status === 404 && response.headers.get('x-render-routing') === 'no-server'
   if (method === 'GET' && transientAttempt < maxTransientAttempts && ([408, 500, 502, 503, 504].includes(response.status) || renderHasNoServer)) {
-    await retryDelay(250 * 2 ** transientAttempt)
+    const retryAfterSeconds = Number(response.headers.get('retry-after'))
+    const delay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(retryAfterSeconds * 1_000, 5_000)
+      : 250 * 2 ** transientAttempt
+    await retryDelay(delay)
     return request<T>(path, options, retried, transientAttempt + 1)
   }
 
@@ -139,12 +148,39 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
   return response.text() as Promise<T>
 }
 
-// Share concurrent reads (including React's development effect replay), but never
-// cache a completed client document. Reloads must revalidate revoked/updated links.
+// Start the initial document request while its route bundle downloads. This is a
+// single-use handoff to the mounting page, not a cache for subsequent visits.
+export function preloadPublicDocument(pathname: string) {
+  const match = /^\/(invoice|proposal|sign|change|collection)\/([^/]+)(?:\/|$)/.exec(pathname)
+  const resources: Record<string, string> = { invoice: 'invoices', proposal: 'proposals', sign: 'agreements', change: 'changes', collection: 'collections' }
+  let path: string
+  if (match) {
+    try { path = `/public/${resources[match[1]]}/${encodeURIComponent(decodeURIComponent(match[2]))}` }
+    catch { return }
+  } else if (pathname === '/') path = '/public/portfolio'
+  else return
+  if (initialPublicRead) window.clearTimeout(initialPublicRead.timeout)
+  const promise = request<unknown>(path)
+  const timeout = window.setTimeout(() => {
+    if (initialPublicRead?.promise === promise) initialPublicRead = undefined
+  }, 60_000)
+  initialPublicRead = { path, promise, timeout }
+  // A failed speculative read must not cause an unhandled rejection before the
+  // page mounts. Its normal error/retry UI still receives the original promise.
+  void promise.catch(() => undefined)
+}
+
+// Share concurrent reads (including React's development effect replay). Once
+// the initial handoff is consumed, refreshes always revalidate the client link.
 function readPublic<T>(path: string): Promise<T> {
   const pending = publicReads.get(path)
   if (pending) return pending as Promise<T>
-  const operation = request<T>(path).finally(() => { publicReads.delete(path) })
+  const initial = initialPublicRead?.path === path ? initialPublicRead : undefined
+  if (initial) {
+    window.clearTimeout(initial.timeout)
+    initialPublicRead = undefined
+  }
+  const operation = (initial ? initial.promise as Promise<T> : request<T>(path)).finally(() => { publicReads.delete(path) })
   publicReads.set(path, operation)
   return operation
 }
@@ -180,7 +216,7 @@ const unwrapList = <T>(payload: unknown, keys: string[]): Paginated<T> => {
   throw new ApiError('The server returned an incomplete list. Refresh to try again.', 502, payload)
 }
 
-async function listAll<T>(path: string, keys: string[]): Promise<Paginated<T>> {
+async function loadAllPages<T>(path: string, keys: string[]): Promise<Paginated<T>> {
   const items: T[] = []
   const limit = 200
   while (true) {
@@ -190,18 +226,29 @@ async function listAll<T>(path: string, keys: string[]): Promise<Paginated<T>> {
   }
 }
 
+function listAll<T>(path: string, keys: string[]): Promise<Paginated<T>> {
+  const key = `${path}\u0000${keys.join(',')}`
+  const pending = listReads.get(key)
+  if (pending) return pending as Promise<Paginated<T>>
+  const operation = loadAllPages<T>(path, keys).finally(() => { listReads.delete(key) })
+  listReads.set(key, operation as Promise<Paginated<unknown>>)
+  return operation
+}
+
 async function download(path: string, fallbackName: string) {
-  const response = await fetch(`${API_ROOT}${path}`, { credentials: 'include' })
+  const response = await fetch(`${API_ROOT}${path}`, { credentials: 'include', cache: 'no-store' })
   if (!response.ok) throw new ApiError('Could not download the document.', response.status)
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = fallbackName
+  const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"\r\n]+)"/i)?.[1]
+  anchor.download = filename || fallbackName
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  // Give mobile browsers time to hand the file to their download/save sheet.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export const api = {
@@ -301,6 +348,7 @@ export const api = {
   recordProposalOpen: (token: string, openingId: string) => request<void>(`/public/proposals/${encodeURIComponent(token)}/open`, { method: 'POST', body: { opening_id: openingId } }),
   publicAgreementPdf: (token: string) => download(`/public/agreements/${encodeURIComponent(token)}/pdf`, 'hich-signed-agreement.pdf'),
   publicInvoicePdf: (token: string) => download(`/public/invoices/${encodeURIComponent(token)}/pdf`, 'hich-invoice.pdf'),
+  publicInvoicePdfUrl: (token: string, inline = false) => `${API_ROOT}/public/invoices/${encodeURIComponent(token)}/pdf${inline ? '?inline=true' : ''}`,
   operations: {
     async tasks() { return unwrap<OperationTask[]>(await request('/operations/tasks'), ['tasks']) },
     async createTask(data: Partial<OperationTask>) { return unwrap<OperationTask>(await request('/operations/tasks', { method: 'POST', body: data }), ['task']) },

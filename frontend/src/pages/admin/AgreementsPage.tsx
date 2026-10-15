@@ -11,7 +11,7 @@ import type { Agreement, AgreementTemplate, Client, Invoice } from '../../lib/ty
 import { agreementMessage } from '../../lib/messages'
 
 type AgreementForm = Partial<Agreement> & { termsText?: string }
-const blankAgreement: AgreementForm = { title: 'Website & Systems Development Agreement', project_title: '', client_id: '', description: '', termsText: '', amount: null, currency: 'LKR', commercial_details_visible: true, expires_at: '', status: 'draft', renewal_amount: null, visiting_fee_lkr: 0 }
+const blankAgreement: AgreementForm = { title: 'Website & Systems Development Agreement', project_title: '', client_id: '', description: '', termsText: '', amount: null, currency: 'LKR', commercial_details_visible: true, expires_at: '', status: 'draft', renewal_amount: null }
 
 const getClient = (agreement: Agreement, clients: Client[]) => clients.find((client) => String(client.id) === String(agreement.client_id)) || (typeof agreement.client === 'object' ? agreement.client : undefined)
 
@@ -158,6 +158,8 @@ export function AgreementsPage() {
     if (saving) return
     if (prefillBusy || prefillError) return toast('Finish copying the invoice details before saving.', 'error')
     if (!form.title?.trim() || !form.client_name?.trim() || !form.client_phone?.trim() || !form.project_title?.trim()) return toast('Add the client name, phone number and project name.', 'error')
+    const visitingFee = Number(form.visiting_fee_lkr || 0)
+    if (!Number.isFinite(visitingFee) || (visitingFee !== 0 && (visitingFee < 5000 || visitingFee > 15000))) return toast('Leave the visiting fee blank or enter 0 when no fee applies. For a paid visit, enter LKR 5,000–15,000.', 'error')
     setSaving(true)
     const payload: Partial<Agreement> = {
       title: form.title,
@@ -170,7 +172,7 @@ export function AgreementsPage() {
       terms: form.termsText === termsText(form.terms || template?.terms) ? (form.terms || template?.terms) : (form.termsText?.trim() || template?.terms),
       expected_version: editing === 'new' ? undefined : form.version,
       renewal_amount: Number(form.renewal_amount) > 0 ? Number(form.renewal_amount) : null, renewal_currency: form.renewal_currency || 'LKR', renewal_due_date: form.renewal_due_date || '',
-      source_invoice_id: form.source_invoice_id, visiting_fee_lkr: Number(form.visiting_fee_lkr || 0),
+      source_invoice_id: form.source_invoice_id, visiting_fee_lkr: visitingFee,
       payment_schedule: form.payment_schedule || [], payment_instructions: form.payment_instructions,
       project_due_date: form.project_due_date,
     }
@@ -272,7 +274,7 @@ export function AgreementsPage() {
         {form.commercial_details_visible === false && <p className="form-grid__full generated-id-note">The budget and renewal fields below remain available for your internal record, but they will not appear in the client link, signed PDF or client message.</p>}
         <Input label="Project budget" type="number" min="0.01" step="0.01" value={form.amount ?? ''} onChange={(event) => setForm({ ...form, amount: event.target.value === '' ? null : Number(event.target.value) })} hint="Leave blank when the amount will be agreed in a separate quotation or invoice." optional />
         <Select label="Currency" value={form.currency || 'LKR'} onChange={(event) => setForm({ ...form, currency: event.target.value })}><option value="LKR">LKR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></Select>
-        <Input label="Visiting fee (LKR)" type="number" min="5000" max="15000" step="0.01" value={form.visiting_fee_lkr || ''} onChange={event => setForm({ ...form, visiting_fee_lkr: Number(event.target.value) || 0 })} hint="Leave blank when no on-site visit applies. If used, enter LKR 5,000–15,000." optional />
+        <Input label="Visiting fee (LKR)" type="number" min="0" max="15000" step="0.01" value={form.visiting_fee_lkr ?? ''} onChange={event => setForm({ ...form, visiting_fee_lkr: event.target.value === '' ? undefined : Number(event.target.value) })} placeholder="No visiting fee" hint="Leave blank or enter 0 when no fee applies. For a paid visit, enter LKR 5,000–15,000." optional />
         {Boolean(form.payment_schedule?.length) && <section className="form-grid__full agreement-section"><h3>Payment schedule from invoice</h3>{form.payment_schedule?.map((phase, index) => <p key={index}>{phase.name}: {formatCurrency(Number(phase.amount), form.currency)} ? {phase.is_paid ? 'Received' : 'Pending'}</p>)}<p>These amounts form part of the agreement. Record later payments through the invoice.</p></section>}
         <Textarea className="form-grid__full" label="Project scope and included deliverables" value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} placeholder="Describe the engagement, deliverables and intended outcome…" />
         <Input label="Annual renewal amount" type="number" step="0.01" min="0.01" value={form.renewal_amount ?? ''} onChange={event => setForm({ ...form, renewal_amount: event.target.value === '' ? null : Number(event.target.value) })} placeholder="Leave blank when no renewal applies" hint="Optional. Renewal clauses and figures are included only when renewal details are supplied." optional />

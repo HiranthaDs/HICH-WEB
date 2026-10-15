@@ -31,7 +31,7 @@ def with_default_payment_instructions(value: Any) -> str:
 
 class RenewalItem(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    service: Literal["domain", "hosting", "domain_hosting"]
+    service: str = Field(min_length=1, max_length=80)
     description: str = Field(min_length=1, max_length=240)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
 

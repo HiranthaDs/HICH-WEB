@@ -7,8 +7,11 @@ import type { Invoice, RenewalItem } from '../lib/types'
 import { Button, Input, Modal, Select, Textarea } from './ui'
 import './renewal-invoices.css'
 
+const serviceNames: Record<string, string> = { domain: 'Domain', hosting: 'Hosting', domain_hosting: 'Domain & hosting' }
+const serviceName = (value: string) => serviceNames[value] || value
+
 export function RenewalItemsEditor({ items, onChange, currency }: { items: RenewalItem[]; onChange: (items: RenewalItem[]) => void; currency?: string }) {
-  return <section className="renewal-services-editor"><div className="document-toolbar"><div><h3>Renewal service charges</h3><p>List the services and amounts your client will see{currency ? ` in ${currency}` : ''}.</p></div><Button variant="secondary" size="sm" type="button" disabled={items.length >= 20} icon={Plus} onClick={() => onChange([...items, { service: 'hosting', description: 'Hosting renewal', amount: 0 }])}>Add service</Button></div>{items.map((item, index) => <div className="renewal-service-row" key={index}><Select label={`Service ${index + 1}`} value={item.service} onChange={e => onChange(items.map((current, i) => i === index ? { ...current, service: e.target.value as RenewalItem['service'], description: ['Domain renewal', 'Hosting renewal', 'Domain & hosting renewal', ''].includes(current.description) ? e.target.value === 'domain' ? 'Domain renewal' : e.target.value === 'hosting' ? 'Hosting renewal' : 'Domain & hosting renewal' : current.description } : current))}><option value="domain_hosting">Domain & hosting</option><option value="domain">Domain</option><option value="hosting">Hosting</option></Select><Input label={`Service description ${index + 1}`} required maxLength={240} value={item.description} placeholder="e.g. example.com — annual domain renewal" onChange={e => onChange(items.map((current, i) => i === index ? { ...current, description: e.target.value } : current))} /><Input label={`Service amount ${index + 1}`} required type="number" min="0.01" step="0.01" value={item.amount || ''} onChange={e => onChange(items.map((current, i) => i === index ? { ...current, amount: Number(e.target.value) } : current))} /><button className="icon-button icon-button--danger" type="button" disabled={items.length === 1} aria-label={`Remove renewal service ${index + 1}`} onClick={() => onChange(items.filter((_, i) => i !== index))}><Trash2 size={17} /></button></div>)}</section>
+  return <section className="renewal-services-editor"><div className="document-toolbar"><div><h3>Renewal service charges</h3><p>Type any service and amount your client should see{currency ? ` in ${currency}` : ''}. Domain and hosting are optional examples, not fixed choices.</p></div><Button variant="secondary" size="sm" type="button" disabled={items.length >= 20} icon={Plus} onClick={() => onChange([...items, { service: '', description: '', amount: 0 }])}>Add service</Button></div>{items.map((item, index) => <div className="renewal-service-row" key={index}><Input label={`Service name ${index + 1}`} required maxLength={80} value={serviceName(item.service)} placeholder="Hosting, email, SSL, maintenance…" onChange={e => onChange(items.map((current, i) => i === index ? { ...current, service: e.target.value } : current))} /><Input label={`Service description ${index + 1}`} required maxLength={240} value={item.description} placeholder="Describe exactly what this charge renews" onChange={e => onChange(items.map((current, i) => i === index ? { ...current, description: e.target.value } : current))} /><Input label={`Service amount ${index + 1}`} required type="number" min="0.01" step="0.01" value={item.amount || ''} onChange={e => onChange(items.map((current, i) => i === index ? { ...current, amount: Number(e.target.value) } : current))} /><button className="icon-button icon-button--danger" type="button" disabled={items.length === 1} aria-label={`Remove renewal service ${index + 1}`} onClick={() => onChange(items.filter((_, i) => i !== index))}><Trash2 size={17} /></button></div>)}</section>
 }
 
 export function RenewalInvoiceForm({ source, onClose, onSaved }: { source: Invoice | null; onClose: () => void; onSaved: (invoice: Invoice, recordPayment: boolean) => void }) {
@@ -24,7 +27,7 @@ export function RenewalInvoiceForm({ source, onClose, onSaved }: { source: Invoi
   const expired = Boolean(source?.renewal_due_date && source.renewal_due_date.slice(0, 10) < today)
   useEffect(() => {
     if (!source) return
-    setItems([{ service: 'domain_hosting', description: 'Domain & hosting renewal', amount: Number(source.renewal_amount || 0) }])
+    setItems([{ service: 'Domain & hosting', description: 'Annual domain and hosting renewal', amount: Number(source.renewal_amount || 0) }])
     setCurrency(source.renewal_currency || source.currency || 'LKR')
     setDue(source.renewal_due_date && source.renewal_due_date.slice(0, 10) > today ? source.renewal_due_date.slice(0, 10) : today)
     setAccepted(false); setApplyFee(false); setNote('')
@@ -35,7 +38,7 @@ export function RenewalInvoiceForm({ source, onClose, onSaved }: { source: Invoi
     event.preventDefault()
     if (!source || busyAction) return
     if (!source.renewal_due_date) return toast('Save the service expiry / renewal date on the project invoice first.', 'error')
-    if (!items.length || items.some(item => !item.description.trim() || !Number.isFinite(item.amount) || item.amount <= 0)) return toast('Enter a description and positive amount for every renewal service.', 'error')
+    if (!items.length || items.some(item => !item.service.trim() || !item.description.trim() || !Number.isFinite(item.amount) || item.amount <= 0)) return toast('Enter a service name, description and positive amount for every renewal charge.', 'error')
     const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'record' ? 'record' : 'share'
     const recordPayment = action === 'record'
     setBusyAction(action)

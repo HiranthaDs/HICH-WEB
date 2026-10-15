@@ -514,13 +514,17 @@ def share_agreement(
     _ensure_shareable(current)
     options = payload or AgreementShareRequest()
     token = None if options.rotate else _recover_token(current, settings)
-    if token is not None:
-        # Copying a stable link does not turn a viewed agreement back to sent.
+    if token is not None and current.get("status") in {"sent", "viewed"}:
+        # Copying an already-published stable link does not turn a viewed
+        # agreement back to sent. Draft/legacy-expired records must continue
+        # through the publication update below; returning their preallocated
+        # token here would hand the client a URL that the public endpoint
+        # correctly refuses to display.
         audit(gateway.service, request, settings, "share", "agreement", agreement_id, principal)
         url = _share_url(settings, token)
         return {"share": {"url": url, "share_url": url, "token": token, "version": current.get("version", 1)}}
-    nonce = str(uuid4())
-    token = _agreement_token(str(current["public_id"]), nonce, settings)
+    nonce = str(current.get("share_nonce")) if token is not None else str(uuid4())
+    token = token or _agreement_token(str(current["public_id"]), nonce, settings)
     changes = {
         "share_nonce": nonce,
         "access_token_hash": _token_hash(token, settings),

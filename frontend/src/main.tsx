@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { preloadPublicDocument } from './lib/api'
 import './styles.css'
 
 const preloadReloadKey = 'hich-preload-reload-at'
@@ -16,6 +17,8 @@ window.addEventListener('vite:preloadError', (event) => {
   }
 })
 window.setTimeout(() => sessionStorage.removeItem(preloadReloadKey), 15_000)
+
+preloadPublicDocument(window.location.pathname)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

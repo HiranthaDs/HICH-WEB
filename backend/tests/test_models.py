@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 from uuid import uuid4
 
-from app.models import AgreementCreate, InvoiceCreate, SignAgreementRequest
+from app.models import AgreementCreate, AgreementUpdate, InvoiceCreate, SignAgreementRequest
 
 
 def test_agreement_accepts_description_or_legacy_content() -> None:
@@ -22,6 +22,19 @@ def test_agreement_requires_client_reference() -> None:
             title="Website delivery agreement",
             description="A sufficiently detailed agreement description for testing.",
         )
+
+
+@pytest.mark.parametrize("commercial_details_visible", [True, False])
+@pytest.mark.parametrize("fee", [None, "", "  ", 0, "0", "0.00"])
+def test_agreement_accepts_no_visiting_fee(commercial_details_visible, fee) -> None:
+    agreement = AgreementCreate(client_name="Remote client", commercial_details_visible=commercial_details_visible, visiting_fee_lkr=fee)
+    assert agreement.visiting_fee_lkr == 0
+    assert AgreementUpdate(visiting_fee_lkr=fee).visiting_fee_lkr == 0
+
+
+def test_omitted_visiting_fee_defaults_to_zero_only_for_new_agreements() -> None:
+    assert AgreementCreate(client_name="Remote client").visiting_fee_lkr == 0
+    assert "visiting_fee_lkr" not in AgreementUpdate().model_dump(exclude_unset=True)
 
 
 def test_signature_requires_consent_and_one_signature_form() -> None:

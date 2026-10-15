@@ -29,6 +29,11 @@ const cases = [
       page.on('request', request => {
         const url = new URL(request.url());
         requests.push(url.pathname);
+        // Slow the route chunk so the API can finish before the component
+        // mounts: the single-use preload must still avoid a second read.
+        if (url.pathname.includes(`/${scenario.module}.tsx`) || url.pathname.includes(`/${scenario.module}-`)) {
+          return setTimeout(() => request.continue(), 300);
+        }
         if (!url.pathname.startsWith('/api/')) return request.continue();
         if (url.pathname === scenario.endpoint && request.method() === 'GET') {
           publicReads += 1;
@@ -40,7 +45,11 @@ const cases = [
       await page.goto(`${base}${scenario.path}`, { waitUntil: 'networkidle0' });
       await page.waitForSelector(scenario.selector);
       assert.equal(publicReads, 1, `${scenario.path}: concurrent mounts should share one document read`);
+      const routeRequest = requests.findIndex(path => path.includes(`/${scenario.module}.tsx`) || path.includes(`/${scenario.module}-`));
+      assert.ok(routeRequest >= 0, `${scenario.path}: route bundle is requested`);
+      assert.ok(requests.indexOf(scenario.endpoint) < routeRequest, `${scenario.path}: document fetch starts before route bundle download`);
       assert.equal(requests.some(path => path.startsWith('/api/auth/')), false, `${scenario.path}: no admin session request`);
+      assert.equal(requests.some(path => path.endsWith('.ttf')), false, `${scenario.path}: use the smaller WOFF2 web font`);
       for (const otherModule of new Set(cases.map(item => item.module))) {
         if (otherModule === scenario.module) continue;
         assert.equal(requests.some(path => path.includes(`/${otherModule}.tsx`) || path.includes(`/${otherModule}-`)), false, `${scenario.path}: unrelated ${otherModule} should not load`);
@@ -53,7 +62,7 @@ const cases = [
         await page.waitForFunction(() => document.body.textContent.includes('Link revoked'));
         assert.equal(publicReads, 2, 'Refresh revalidates the current link instead of returning completed cached content');
       }
-      console.log(`PASS ${scenario.path}: one initial read, isolated route bundle, no session check`);
+      console.log(`PASS ${scenario.path}: document fetched alongside route bundle, one initial read, no session check`);
       await page.close();
     }
   } finally {

@@ -113,7 +113,7 @@ export interface Agreement {
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'void' | string
 
-export type RenewalItem = { service: 'domain' | 'hosting' | 'domain_hosting'; description: string; amount: number }
+export type RenewalItem = { service: string; description: string; amount: number }
 
 export interface PaymentRecord {
   id: string
@@ -289,6 +289,7 @@ export interface CalendarEvent {
   project_title?: string
   status?: string
   invoice_status?: string
+  invoice_kind?: 'project' | 'renewal'
   method?: string
   payment_reference?: string
 }

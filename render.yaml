@@ -26,9 +26,9 @@ services:
       - key: ADMIN_EMAILS
         sync: false
       - key: PUBLIC_APP_URL
-        value: https://hich-web.onrender.com
+        value: https://hich-web.vercel.app
       - key: FRONTEND_ORIGINS
-        value: https://hich-web.onrender.com
+        value: https://hich-web.vercel.app
       - key: SUPABASE_SECRET_KEY
         sync: false
       - key: TOKEN_HASH_PEPPER

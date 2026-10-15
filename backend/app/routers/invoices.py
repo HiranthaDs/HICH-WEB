@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..config import Settings, get_settings
-from ..data import audit, db_failure, first, rows
+from ..data import audit, db_failure, first, retry_database_read, rows, transient_database_error
 from ..dependencies import Principal, current_admin, require_deletion_pin
 from ..invoice_sharing import (
     InvoiceDocumentCreate,
@@ -115,7 +115,9 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _get(invoice_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
-    result = gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").eq("id", str(invoice_id)).limit(1).execute()
+    result = retry_database_read(
+        lambda: gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").eq("id", str(invoice_id)).limit(1).execute()
+    )
     return _shape(first(result, "Invoice"))
 
 
@@ -128,13 +130,22 @@ def list_invoices(
     gateway: SupabaseGateway = Depends(get_supabase),
 ) -> dict[str, Any]:
     try:
-        query = gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").order("created_at", desc=True).order("id")
-        if invoice_status:
-            query = query.eq("status", invoice_status)
-        result = rows(query.range(offset, offset + limit - 1).execute())
+        def load_page() -> Any:
+            query = gateway.service.table("invoices").select(INVOICE_SELECT).is_("deleted_at", "null").order("created_at", desc=True).order("id")
+            if invoice_status:
+                query = query.eq("status", invoice_status)
+            return query.range(offset, offset + limit - 1).execute()
+
+        result = rows(retry_database_read(load_page))
         items = [_shape(item) for item in result]
         return {"invoices": {"items": items, "total": len(items)}}
     except Exception as exc:
+        if transient_database_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Invoices are temporarily unavailable. Please retry.",
+                headers={"Retry-After": "2"},
+            ) from exc
         raise db_failure(exc, "load invoices") from exc
 
 
@@ -208,7 +219,7 @@ def _renewal_document(source: dict[str, Any], payload: RenewalInvoiceRequest, to
         raise HTTPException(422, "The renewal invoice total exceeds the supported amount")
     return InvoiceDocumentCreate(
         client_id=source["client_id"], agreement_id=source.get("agreement_id"),
-        project_title=f"Domain & hosting renewal — {source.get('project_title') or 'Website'}"[:240],
+        project_title=f"Service renewal — {source.get('project_title') or 'Website'}"[:240],
         amount=total, currency=payload.currency, issue_date=today, due_date=payload.due_date,
         payment_method=source.get("payment_method"), payment_instructions=source.get("payment_instructions"),
         customer_note=payload.customer_note, status="draft",
@@ -227,6 +238,8 @@ def _existing_renewal(invoice_id: UUID, period_date: date, gateway: SupabaseGate
 
 
 def _renewal_source(invoice_id: UUID, gateway: SupabaseGateway) -> dict[str, Any]:
+    # Deliberately exclude the original milestones and receipts: a renewal bill
+    # starts with one fresh unpaid renewal phase and never exposes old payments.
     # Copy stored instructions, not the display value with default bank details
     # appended. A valid 5,000-character source must remain valid when renewed.
     return first(gateway.service.table("invoices").select(RENEWAL_SOURCE_SELECT)
@@ -620,10 +633,10 @@ def invoice_versions(
         raise db_failure(exc, "load invoice history") from exc
 
 
-def _pdf_response(invoice: dict[str, Any]) -> Response:
+def _pdf_response(invoice: dict[str, Any], *, inline: bool = False) -> Response:
     filename = re.sub(r"[^A-Za-z0-9_-]", "-", str(invoice.get("reference") or "invoice"))[:100]
     return Response(invoice_pdf(invoice), media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="{filename}.pdf"',
+        "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{filename}.pdf"',
         "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow, noarchive",
         "Referrer-Policy": "no-referrer",
     })
@@ -670,6 +683,7 @@ def get_public_invoice(
 def download_public_invoice_pdf(
     token: str, request: Request, response: Response,
     settings: Settings = Depends(get_settings), gateway: SupabaseGateway = Depends(get_supabase),
+    inline: bool = False,
 ) -> Response:
     invoice = get_public_invoice(token, request, response, settings, gateway)["invoice"]
-    return _pdf_response(invoice)
+    return _pdf_response(invoice, inline=inline)

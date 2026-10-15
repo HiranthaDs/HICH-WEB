@@ -60,6 +60,7 @@ def test_calendar_uses_colombo_receipt_date_keeps_void_cash_and_excludes_unconfi
     assert receipts[0]["date"] == "2026-10-01"
     assert receipts[0]["amount"] == Decimal("250.50")
     assert receipts[0]["invoice_status"] == "void"
+    assert receipts[0]["invoice_kind"] == "project"
 
 
 def test_calendar_invoice_due_event_is_the_remaining_balance_and_filters_inactive_documents():
@@ -87,6 +88,7 @@ def test_calendar_invoice_due_event_is_the_remaining_balance_and_filters_inactiv
     assert due[0]["invoice_id"] == "open"
     assert due[0]["date"] == "2026-10-01"
     assert due[0]["amount"] == Decimal("750")
+    assert due[0]["invoice_kind"] == "project"
     assert events_of(report, "receipt") == []
 
 
@@ -151,6 +153,7 @@ def test_calendar_renewals_use_billed_total_and_dedupe_linked_or_matching_agreem
     assert project_event["reference"] == "REN-PAID"
     assert project_event["amount"] == Decimal("135")
     assert project_event["status"] == "paid"
+    assert project_event["invoice_kind"] == "renewal"
     agreement_event = next(event for event in renewals if event.get("agreement_id") == "agreement-only")
     assert agreement_event["date"] == "2026-10-31"
     assert agreement_event["currency"] == "GBP"
@@ -169,6 +172,29 @@ def test_calendar_returns_every_renewal_in_range_without_dashboard_truncation():
 
     assert len(events_of(report, "renewal_due")) == 12
     assert report["events"][0]["date"] == "2026-10-01"
+
+
+def test_calendar_identifies_renewal_collection_deadlines_and_receipts():
+    bill = invoice(
+        "renewal-bill",
+        invoice_kind="renewal",
+        renewal_source_invoice_id="source",
+        renewal_period_date="2026-11-01",
+        due_date="2026-10-12",
+        project_value="5000",
+    )
+    payments = [{
+        "id": "renewal-receipt", "invoice_id": "renewal-bill", "amount": "2000",
+        "currency": "LKR", "paid_at": "2026-10-10T08:00:00Z", "date_confirmed": True,
+    }]
+
+    report = calendar_report([bill], payments, [], date(2026, 10, 1), date(2026, 10, 31))
+
+    receipt = events_of(report, "receipt")[0]
+    due = events_of(report, "invoice_due")[0]
+    assert receipt["invoice_kind"] == due["invoice_kind"] == "renewal"
+    assert due["amount"] == Decimal("3000")
+    assert due["date"] == "2026-10-12"
 
 
 @pytest.mark.parametrize(

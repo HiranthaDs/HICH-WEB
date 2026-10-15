@@ -170,6 +170,11 @@ class AgreementCreate(APIModel):
     status: AgreementStatus = AgreementStatus.DRAFT
     send_immediately: bool = False
 
+    @field_validator("visiting_fee_lkr", mode="before")
+    @classmethod
+    def blank_visiting_fee_is_zero(cls, value: object) -> object:
+        return 0 if value is None or isinstance(value, str) and not value.strip() else value
+
     @field_validator("expires_at", "reference", "client_email", "client_phone", "renewal_due_date", mode="before")
     @classmethod
     def blank_expiry_is_none(cls, value: object) -> object:
@@ -222,6 +227,11 @@ class AgreementUpdate(APIModel):
     client_email: EmailStr | None = None
     client_phone: str | None = Field(default=None, min_length=3, max_length=40)
     expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("visiting_fee_lkr", mode="before")
+    @classmethod
+    def blank_visiting_fee_is_zero(cls, value: object) -> object:
+        return 0 if value is None or isinstance(value, str) and not value.strip() else value
 
     @field_validator("expires_at", "client_email", "renewal_due_date", mode="before")
     @classmethod

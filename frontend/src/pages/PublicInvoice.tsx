@@ -8,13 +8,14 @@ import { formatCurrency, formatDate } from '../lib/format'
 import { withDefaultPaymentInstructions } from '../lib/paymentInstructions'
 import type { Invoice } from '../lib/types'
 
+const serviceNames: Record<string, string> = { domain: 'Domain', hosting: 'Hosting', domain_hosting: 'Domain & hosting' }
+const serviceName = (value: string) => serviceNames[value] || value
+
 export function PublicInvoice() {
   const { token = '' } = useParams()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [pdfBusy, setPdfBusy] = useState(false)
-  const [pdfError, setPdfError] = useState('')
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try { setInvoice(await api.publicInvoice(token)) }
@@ -23,7 +24,13 @@ export function PublicInvoice() {
   }, [token])
   useEffect(() => { void load() }, [load])
 
-  const money = (value: number) => formatCurrency(value, invoice?.currency || 'LKR')
+  const money = (value: number, currency = invoice?.currency || 'LKR') => {
+    try {
+      return new Intl.NumberFormat('en-LK', {
+        style: 'currency', currency, currencyDisplay: 'code', minimumFractionDigits: 2, maximumFractionDigits: 2,
+      }).format(value)
+    } catch { return formatCurrency(value, currency) }
+  }
   const total = Number(invoice?.amount || 0)
   const paid = Number(invoice?.paid_amount || 0)
   const balance = Number(invoice?.balance_due ?? Math.max(0, total - paid))
@@ -47,7 +54,7 @@ export function PublicInvoice() {
 
         <dl className="invoice-meta">
           <div><dt>Billed to</dt><dd>{invoice.client_name || 'Client'}</dd>{invoice.phone && <small>{invoice.phone}</small>}</div>
-          <div><dt>For</dt><dd>{invoice.project_title || (isRenewal ? 'Domain & hosting renewal' : 'Development services')}</dd></div>
+          <div><dt>For</dt><dd>{invoice.project_title || (isRenewal ? 'Service renewal' : 'Development services')}</dd></div>
           <div><dt>Issue date</dt><dd>{formatDate(invoice.issue_date)}</dd></div>
           <div><dt>Due date</dt><dd>{isPaid ? 'Paid' : formatDate(invoice.due_date)}</dd></div>
         </dl>
@@ -58,7 +65,7 @@ export function PublicInvoice() {
           <h2 id="invoice-items-title">Invoice details</h2>
           <div className="table-scroll"><table className="document-table"><thead><tr><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>
             {isRenewal ? <>
-              {invoice.renewal_items?.map((item, index) => <tr key={index}><td><strong>{item.description}</strong><small>{item.service.replace('_', ' & ')}</small></td><td>{isPaid ? 'Paid' : 'Due'}</td><td>{money(Number(item.amount))}</td></tr>)}
+              {invoice.renewal_items?.map((item, index) => <tr key={index}><td><strong>{item.description}</strong><small>{serviceName(item.service)}</small></td><td>{isPaid ? 'Paid' : 'Due'}</td><td>{money(Number(item.amount))}</td></tr>)}
               {Number(invoice.renewal_late_fee) > 0 && <tr><td><strong>Late fee</strong><small>Agreed one-time surcharge (18%)</small></td><td>{isPaid ? 'Paid' : 'Due'}</td><td>{money(Number(invoice.renewal_late_fee))}</td></tr>}
             </> : invoice.payments?.length ? invoice.payments.map((payment, index) => {
               const paymentReceived = payment.is_paid || payment.isPaid
@@ -79,9 +86,9 @@ export function PublicInvoice() {
           {invoice.customer_note && <section><h2>Note</h2><p>{invoice.customer_note}</p></section>}
         </div>
 
-        {!!invoice.payment_records?.length && <section className="invoice-receipts"><h2>Payment receipts</h2><div className="table-scroll"><table className="document-table"><thead><tr><th>Received</th><th>Method</th><th>Amount</th></tr></thead><tbody>{invoice.payment_records.map((receipt, index) => <tr key={receipt.id || index}><td>{receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at)}</td><td>{receipt.method || 'Payment'}</td><td>{money(Number(receipt.amount))}</td></tr>)}</tbody></table></div></section>}
+        {!!invoice.payment_records?.length && <section className="invoice-receipts"><h2>Payment receipts</h2><div className="table-scroll"><table className="document-table"><thead><tr><th>Received</th><th>Method</th><th>Amount</th></tr></thead><tbody>{invoice.payment_records.map((receipt, index) => <tr key={receipt.id || index}><td>{receipt.date_confirmed === false ? 'Date not recorded' : formatDate(receipt.paid_at)}<small>{receipt.receipt_number || 'Recorded payment'}</small></td><td>{receipt.method || 'Payment'}</td><td>{money(Number(receipt.amount), receipt.currency || invoice.currency || 'LKR')}</td></tr>)}</tbody></table></div></section>}
 
-        {invoice.renewal_amount && !isRenewal ? <section className="invoice-renewal-note"><span>Annual care / renewal</span><strong>{formatCurrency(invoice.renewal_amount, invoice.renewal_currency || invoice.currency || 'LKR')}</strong><small>Service expiry / renewal due {formatDate(invoice.renewal_due_date)} · billed separately</small></section> : null}
+        {invoice.renewal_amount && !isRenewal ? <section className="invoice-renewal-note"><span>Annual care / renewal</span><strong>{money(invoice.renewal_amount, invoice.renewal_currency || invoice.currency || 'LKR')}</strong><small>Service expiry / renewal due {formatDate(invoice.renewal_due_date)} · billed separately</small></section> : null}
 
         <footer className="invoice-footer"><div><strong>Thank you for your business.</strong><span>Hich Web · Websites & systems</span></div><small>Revision {invoice.revision || 1} · Updated {formatDate(invoice.updated_at || invoice.created_at || invoice.issue_date)}<br />This secure link always shows the latest saved invoice.</small></footer>
       </article>
@@ -91,14 +98,9 @@ export function PublicInvoice() {
           {isPaid ? <CheckCircle2 size={36} /> : <p className="eyebrow">Payment</p>}
           <h2>{isPaid ? 'Paid in full' : `${money(balance)} due`}</h2>
           <p>{isPaid ? 'Your cleared payment has been recorded. Keep this invoice for your records.' : invoice.payment_method || 'Please use the payment instructions shown on the invoice.'}</p>
-          <Button icon={Download} loading={pdfBusy} onClick={async () => {
-            setPdfBusy(true); setPdfError('')
-            try { await api.publicInvoicePdf(token) }
-            catch (error) { setPdfError(error instanceof Error ? error.message : 'PDF could not be downloaded. Please retry.') }
-            finally { setPdfBusy(false) }
-          }}>Download PDF</Button>
-          {pdfError && <p role="alert">{pdfError}</p>}
-          <Button variant="secondary" icon={Printer} onClick={() => window.print()}>Print / Save PDF</Button>
+          <a className="button button--primary button--md" href={api.publicInvoicePdfUrl(token)} target="_blank" rel="noopener noreferrer"><Download size={18} aria-hidden="true" /><span>Download PDF</span></a>
+          <a className="button button--secondary button--md" href={api.publicInvoicePdfUrl(token, true)} target="_blank" rel="noopener noreferrer"><Printer size={18} aria-hidden="true" /><span>Print / Save PDF</span></a>
+          <small className="invoice-pdf-hint">Opens the same A4 invoice for printing or saving on your device.</small>
           <Button variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
         </section>
         <Link className="text-link" to="/"><ArrowLeft size={15} />Visit Hich Web</Link>

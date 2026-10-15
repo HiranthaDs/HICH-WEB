@@ -32,13 +32,19 @@ def request(**extra):
 
 
 def test_renewal_bill_contains_only_services_in_renewal_currency_and_no_project_receipts():
-    original = source()
-    invoice = _renewal_document(original, request(), date(2026, 10, 8))
+    original = source(payments=[{"amount": "100000", "paid_at": "2025-10-08"}])
+    custom = RenewalInvoiceRequest(
+        renewal_period_date="2026-10-01", due_date="2026-10-08", currency="LKR",
+        items=[{"service": "Business email and SSL", "description": "Managed email and certificate renewal", "amount": "12000"}],
+    )
+    invoice = _renewal_document(original, custom, date(2026, 10, 8))
     assert invoice.invoice_kind == "renewal" and invoice.project_value == Decimal("12000")
     assert invoice.currency == "LKR" and original["currency"] == "USD"
     assert str(invoice.renewal_source_invoice_id) == original["id"]
     assert invoice.renewal_amount is None and invoice.renewal_due_date is None
     assert len(invoice.payments) == 1 and not invoice.payments[0].is_paid
+    assert invoice.renewal_items[0].service == "Business email and SSL"
+    assert invoice.payments[0].amount == Decimal("12000")
     assert invoice.payment_instructions == "Account details" and invoice.status == "draft"
 
 

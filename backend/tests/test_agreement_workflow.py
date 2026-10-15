@@ -236,6 +236,22 @@ def test_naive_expiry_is_rejected():
         AgreementUpdate(expires_at="2027-01-01T12:00:00")
 
 
+@pytest.mark.parametrize("commercial_details_visible", [True, False])
+@pytest.mark.parametrize("fee", [None, "", 0, "0.00"])
+def test_existing_agreement_can_remove_visiting_fee_and_keep_signing_available(settings, commercial_details_visible, fee):
+    row = record(settings) | {"visiting_fee_lkr": "5000.00", "commercial_details_visible": commercial_details_visible}
+    row["terms"] = agreements.scheduled_terms(row)
+    gateway = FakeGateway(row)
+    payload = AgreementUpdate(visiting_fee_lkr=fee, expected_version=row["version"])
+
+    saved = agreements.update_agreement(UUID(row["id"]), payload, request(), None, settings, gateway)["agreement"]
+
+    assert float(saved["visiting_fee_lkr"]) == 0
+    assert "Visiting fee: LKR" not in str(saved["terms"])
+    assert "32. Hich Web visiting fee and final-balance credit" not in saved["terms"]
+    agreements._ensure_shareable(gateway.row)
+
+
 def test_phone_and_project_are_required_but_budget_is_optional_before_sharing(settings):
     row = record(settings)
     row["amount"] = None
@@ -422,6 +438,25 @@ def test_copying_agreement_link_is_stable_and_explicit_replacement_rotates_it(se
     assert first["url"] == second["url"]
     assert replacement["url"] != first["url"]
     assert gateway.counters == []
+
+
+def test_first_share_publishes_preallocated_draft_link(settings):
+    nonce = str(uuid4())
+    row = record(settings) | {"status": "draft", "share_nonce": nonce}
+    token = agreements._agreement_token(row["public_id"], nonce, settings)
+    row["access_token_hash"] = agreements._token_hash(token, settings)
+    gateway = FakeGateway(row)
+
+    shared = agreements.share_agreement(
+        UUID(row["id"]), request(), None, SimpleNamespace(id=uuid4()), settings, gateway
+    )["share"]
+
+    assert shared["token"] == token
+    assert gateway.row["share_nonce"] == nonce
+    assert gateway.row["status"] == "sent"
+    assert gateway.row["sent_at"]
+    public = agreements.public_agreement(token, request(), settings, gateway)["agreement"]
+    assert public["status"] == "viewed"
 
 
 def test_signed_agreement_revisit_does_not_count_or_update_signed_record(settings):

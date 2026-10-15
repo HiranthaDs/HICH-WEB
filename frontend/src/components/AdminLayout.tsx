@@ -2,6 +2,7 @@ import {
   Activity,
   Bell,
   BriefcaseBusiness,
+  CalendarDays,
   ChevronRight,
   ClipboardList,
   Command,
@@ -29,7 +30,8 @@ import { Brand } from './Brand'
 
 const navItems = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/admin/clients', label: 'Clients', icon: Users },
+  { to: '/admin/clients', label: 'Clients', icon: Users, end: true },
+  { to: '/admin/clients/calendar', label: 'Renewal calendar', icon: CalendarDays },
   { to: '/admin/proposals', label: 'Proposals', icon: Presentation },
   { to: '/admin/agreements', label: 'Agreements', icon: FileCheck2 },
   { to: '/admin/invoices', label: 'Invoices', icon: FileText },
@@ -39,6 +41,7 @@ const navItems = [
   { to: '/admin/activity', label: 'Activity', icon: Activity },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]
+const mobileNavItems = navItems.filter(item => ['/admin', '/admin/clients', '/admin/proposals', '/admin/agreements', '/admin/invoices'].includes(item.to))
 
 type SearchResult = { id: string; title: string; detail: string; category: string; destination: string; icon: typeof Users }
 
@@ -186,7 +189,7 @@ export function AdminLayout() {
       </div>
 
       <nav className="mobile-admin-nav" aria-label="Primary admin navigation">
-        {navItems.slice(0, 5).map(({ to, label, icon: Icon, end }) => (
+        {mobileNavItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? 'active' : ''}>
             <Icon size={19} /><span>{label === 'Agreements' ? 'Agreements' : label}</span>
           </NavLink>

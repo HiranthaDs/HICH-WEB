@@ -15,6 +15,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword').then(module => 
 const OperationsPage = lazy(() => import('./pages/admin/OperationsPage').then(module => ({ default: module.OperationsPage })))
 const OverviewPage = lazy(() => import('./pages/admin/OverviewPage').then((module) => ({ default: module.OverviewPage })))
 const ClientsPage = lazy(() => import('./pages/admin/ClientsPage').then((module) => ({ default: module.ClientsPage })))
+const ClientRenewalCalendarPage = lazy(() => import('./pages/admin/ClientRenewalCalendarPage').then((module) => ({ default: module.ClientRenewalCalendarPage })))
 const ProposalsPage = lazy(() => import('./pages/admin/ProposalsPage').then((module) => ({ default: module.ProposalsPage })))
 const AgreementsPage = lazy(() => import('./pages/admin/AgreementsPage').then((module) => ({ default: module.AgreementsPage })))
 const InvoicesPage = lazy(() => import('./pages/admin/InvoicesPage').then((module) => ({ default: module.InvoicesPage })))
@@ -54,6 +55,7 @@ export default function App() {
             <Route index element={<OverviewPage />} />
             <Route path="operations" element={<OperationsPage />} />
             <Route path="clients" element={<ClientsPage />} />
+            <Route path="clients/calendar" element={<ClientRenewalCalendarPage />} />
             <Route path="proposals" element={<ProposalsPage />} />
             <Route path="agreements" element={<AgreementsPage />} />
             <Route path="invoices" element={<InvoicesPage />} />

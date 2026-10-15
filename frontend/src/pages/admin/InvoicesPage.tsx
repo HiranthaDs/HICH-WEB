@@ -1,4 +1,4 @@
-import { Check, CircleDollarSign, Link2, History, Download, FileText, MessageCircle, MoreHorizontal, Plus, ReceiptText, RefreshCw, Trash2, WalletCards } from 'lucide-react'
+import { Building2, Check, CircleDollarSign, Link2, History, Download, FileText, Mail, MessageCircle, MoreHorizontal, Phone, Plus, ReceiptText, RefreshCw, Trash2, UserPlus, Users, WalletCards } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { InvoicePayments } from '../../components/InvoicePayments'
 import { RenewalInvoiceForm, RenewalItemsEditor } from '../../components/RenewalInvoiceForm'
@@ -19,6 +19,7 @@ type Payment = NonNullable<Invoice['payments']>[number]
 type InvoiceForm = Partial<Invoice> & { payments: Payment[] }
 type InvoiceSection = 'pending' | 'completed' | 'void'
 type InvoiceAction = 'share' | 'payment' | 'history' | 'revoke' | 'renewal'
+type EditorIntent = 'invoice' | 'new-work' | 'renewal-setup'
 const blankInvoice: InvoiceForm = { client_id: '', project_title: '', amount: 0, paid_amount: 0, currency: 'LKR', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', payment_method: 'Bank transfer', payment_instructions: DEFAULT_PAYMENT_INSTRUCTIONS, notes: '', renewal_amount: 0, renewal_currency: 'LKR', renewal_due_date: '', payments: [{ name: 'Advance payment', amount: 0, status: 'Pending', is_paid: false }, { name: 'Final balance', amount: 0, status: 'Pending', is_paid: false }] }
 const blankClient: Partial<Client> = { name: '', company: '', email: '', phone: '', address: '', notes: '', status: 'active' }
 
@@ -37,7 +38,7 @@ export function InvoicesPage() {
   const [visitFee, setVisitFee] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState(params.get('search') || '')
   useEffect(() => setQuery(params.get('search') || ''), [params])
   const [shared, setShared] = useState<Invoice | null>(null)
@@ -51,16 +52,19 @@ export function InvoicesPage() {
   const [mobileActions, setMobileActions] = useState<Invoice | null>(null)
   const [loadWarning, setLoadWarning] = useState('')
   const [editing, setEditing] = useState<Invoice | 'new' | null>(null)
-  const [editorIntent, setEditorIntent] = useState<'invoice' | 'renewal-setup'>('invoice')
+  const [editorIntent, setEditorIntent] = useState<EditorIntent>('invoice')
   const [form, setForm] = useState<InvoiceForm>({ ...blankInvoice })
   const [clientMode, setClientMode] = useState<'existing' | 'new'>('existing')
   const [newClient, setNewClient] = useState<Partial<Client>>({ ...blankClient })
+  const [clientValidationError, setClientValidationError] = useState('')
+  const clientPickerRef = useRef<HTMLElement | null>(null)
   const openedRequest = useRef('')
   const loadGeneration = useRef(0)
   const [paymentPlanTouched, setPaymentPlanTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<Invoice | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [creationChoiceOpen, setCreationChoiceOpen] = useState(false)
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
@@ -100,25 +104,55 @@ export function InvoicesPage() {
   }, {}))
   const totalPaid = currencyTotals.map(([currency, total]) => formatCurrency(total.paid, currency)).join(' / ') || formatCurrency(0)
   const totalOutstanding = currencyTotals.map(([currency, total]) => formatCurrency(total.outstanding, currency)).join(' / ') || formatCurrency(0)
+  const availableClients = useMemo(() => clients.filter((client) => {
+    if (String(client.id) === String(form.client_id)) return true
+    return [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())
+  }), [clients, clientQuery, form.client_id])
+  const selectedClient = useMemo<Client | undefined>(() => {
+    const current = clients.find((client) => String(client.id) === String(form.client_id))
+    if (current) return current
+    if (!form.client_id || !editing || editing === 'new' || String(editing.client_id) !== String(form.client_id)) return undefined
+    const historical = clientFor(editing, clients)
+    if (historical) return historical
+    return { id: form.client_id, name: editing.client_name || 'Linked client', phone: editing.phone, status: 'archived' }
+  }, [clients, editing, form.client_id])
 
-  const openEditor = (invoice?: Invoice, intent: 'invoice' | 'renewal-setup' = 'invoice') => {
+  const openEditor = (invoice?: Invoice, intent: EditorIntent = 'invoice') => {
     setEditorIntent(intent)
     setEditing(invoice || 'new')
-    const payments = invoice?.payments?.length ? invoice.payments.map((payment) => ({ ...payment })) : blankInvoice.payments.map((payment) => ({ ...payment }))
+    const payments = invoice?.payments?.length ? invoice.payments.map((payment) => ({ ...payment })) : intent === 'new-work' ? [{ name: 'Full payment', amount: 0, status: 'Pending', is_paid: false }] : blankInvoice.payments.map((payment) => ({ ...payment }))
     const selectedId = params.get('client') || ''
     setForm(invoice ? { ...invoice, payments } : { ...blankInvoice, client_id: selectedId, issue_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' }), payments })
     setClientMode(invoice || selectedId || clients.length ? 'existing' : 'new')
     setNewClient({ ...blankClient })
+    setClientValidationError('')
     setClientQuery('')
     setVisitFee(0)
     setPaymentPlanTouched(Boolean(invoice))
+  }
+
+  const switchClientMode = (nextMode: 'existing' | 'new') => {
+    if (nextMode === clientMode) return
+    setClientMode(nextMode)
+    setClientValidationError('')
+    setClientQuery('')
+    setForm((current) => ({ ...current, client_id: '' }))
+  }
+
+  const selectClient = (clientId: string) => {
+    setClientValidationError('')
+    setForm((current) => ({ ...current, client_id: clientId }))
   }
 
   useEffect(() => {
     if (loading || error) return
     const request = params.toString()
     if (openedRequest.current === request) return
-    if (params.get('create') === '1') { openedRequest.current = request; openEditor() }
+    if (params.get('create') === '1') {
+      openedRequest.current = request
+      openEditor(undefined, params.get('work') === '1' ? 'new-work' : 'invoice')
+      setParams(current => { const next = new URLSearchParams(current); next.delete('create'); next.delete('work'); return next }, { replace: true })
+    }
     else if (params.get('renewal')) {
       openedRequest.current = request
       setSection('renewals')
@@ -128,7 +162,14 @@ export function InvoicesPage() {
     }
     else if (params.get('invoice')) {
       const invoice = invoices.find(item => String(item.id) === params.get('invoice'))
-      if (invoice) { openedRequest.current = request; setSection(sectionFor(invoice)); openEditor(invoice) }
+      if (invoice) {
+        openedRequest.current = request
+        setSection(sectionFor(invoice))
+        if (params.get('action') === 'share' && invoice.status !== 'void') {
+          void share(invoice)
+          setParams(current => { const next = new URLSearchParams(current); next.delete('invoice'); next.delete('action'); return next }, { replace: true })
+        } else openEditor(invoice)
+      }
     }
   }, [loading, error, params, invoices])
 
@@ -138,6 +179,7 @@ export function InvoicesPage() {
   }
   const updateProjectValue = (value: number) => setForm((current) => {
     if (paymentPlanTouched || editing !== 'new' || value <= 0) return { ...current, amount: value }
+    if (editorIntent === 'new-work') return { ...current, amount: value, payments: [{ name: 'Full payment', amount: value, status: 'Pending', is_paid: false }] }
     const advance = Math.round(value * 50) / 100
     return {
       ...current,
@@ -209,8 +251,16 @@ export function InvoicesPage() {
   const save = async (event: FormEvent) => {
     event.preventDefault()
     if (saving) return
-    if (clientMode === 'existing' && !form.client_id) return toast('Choose an existing client or create a new client below.', 'error')
-    if (clientMode === 'new' && !newClient.name?.trim()) return toast('Enter the new client’s name.', 'error')
+    if (clientMode === 'existing' && !form.client_id) {
+      setClientValidationError('Choose an existing client or switch to New client.')
+      clientPickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return toast('Choose an existing client or create a new client below.', 'error')
+    }
+    if (clientMode === 'new' && !newClient.name?.trim()) {
+      setClientValidationError('Enter the new client’s name.')
+      clientPickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return toast('Enter the new client’s name.', 'error')
+    }
     if (!form.project_title?.trim() || Number(form.amount) <= 0) return toast('Enter the project title and total project amount.', 'error')
     if (editorIntent === 'renewal-setup' && (!form.renewal_due_date || Number(form.renewal_amount) <= 0)) return toast('Enter the annual renewal amount and service expiry date to prepare this renewal.', 'error')
     const payments = form.payments.filter((payment) => Number(payment.amount) > 0)
@@ -238,6 +288,7 @@ export function InvoicesPage() {
       const removesData = original?.payments?.some(phase => phase.id && !normalizedPayments.some(p => String(p.id) === String(phase.id))) || original?.payments?.some(phase => paymentPaid(phase) && !normalizedPayments.some(p => String(p.id) === String(phase.id) && paymentPaid(p) && Number(p.amount) === Number(phase.amount))) || payload.status === 'void'
       const saved = editing === 'new' ? await api.invoices.create(payload) : await api.invoices.update((editing as Invoice).id, payload, removesData ? deletionPin() : undefined)
       setInvoices((current) => editing === 'new' ? [saved, ...current] : current.map((invoice) => invoice.id === saved.id ? saved : invoice))
+      setSection(sectionFor(saved))
       toast(editing === 'new' ? clientCreated ? 'Client and invoice created.' : 'Invoice created.' : 'Invoice updated.', 'success'); setEditing(null)
       if (saved.status !== 'void') {
         if (editorIntent === 'renewal-setup') await openRenewal(saved)
@@ -343,8 +394,8 @@ export function InvoicesPage() {
   </>
 
   return <div className="admin-page">
-    <PageHeader eyebrow="Payments" title="Invoices" description="Track payment milestones, balances and annual renewals without losing context." action={<Button icon={Plus} onClick={() => openEditor()}>New invoice</Button>} />
-    {clientFilter && <div className="document-toolbar"><span>Invoices for {clients.find(client => String(client.id) === clientFilter)?.name || 'this client'}</span><Link className="text-link" to="/admin/invoices">Show all clients</Link></div>}
+    <PageHeader eyebrow="Payments" title="Invoices" description="Track payment milestones, balances and annual renewals without losing context." action={<><Button icon={Plus} onClick={() => openEditor()}>New invoice</Button><Button variant="secondary" icon={FileText} onClick={() => setCreationChoiceOpen(true)}>New work invoice</Button></>} />
+    {clientFilter && <div className="document-toolbar"><span>Invoices for {clients.find(client => String(client.id) === clientFilter)?.name || 'this client'}</span><Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(clientFilter)}`}>View client profile</Link><Button variant="secondary" size="sm" icon={Plus} onClick={() => openEditor(undefined, 'new-work')}>New work invoice</Button><Link className="text-link" to="/admin/invoices">Show all clients</Link></div>}
     <section className="invoice-summary"><article><span><CircleDollarSign size={21} /></span><div><small>Collected</small><strong>{totalPaid}</strong></div></article><article><span><WalletCards size={21} /></span><div><small>Outstanding</small><strong>{totalOutstanding}</strong></div></article><article><span><FileText size={21} /></span><div><small>Open invoices</small><strong>{scopedInvoices.filter((invoice) => !['paid', 'void'].includes(invoice.status)).length}</strong></div></article></section>
     <nav className="invoice-sections" aria-label="Invoice sections">
       <button type="button" className={section === 'pending' ? 'active' : ''} aria-current={section === 'pending' ? 'page' : undefined} onClick={() => setSection('pending')}>Pending <span>{sectionCounts.pending}</span></button>
@@ -370,28 +421,64 @@ export function InvoicesPage() {
       </article>
     })}</div>}
 
+    <Modal open={creationChoiceOpen} onClose={() => setCreationChoiceOpen(false)} title="What are you billing?" description="Choose the correct workflow so the new document contains only this charge and never carries old project payments." size="md">
+      <div className="invoice-type-choices">
+        <button type="button" onClick={() => { setCreationChoiceOpen(false); setSection('renewals'); setParams(current => { const next = new URLSearchParams(current); next.set('section', 'renewals'); return next }, { replace: true }) }}><span><RefreshCw size={22} /></span><strong>Domain, hosting or renewal</strong><small>Choose an existing client service, type the renewal charges manually and prepare its renewal invoice.</small></button>
+        <button type="button" onClick={() => { setCreationChoiceOpen(false); openEditor(undefined, 'new-work') }}><span><FileText size={22} /></span><strong>New work</strong><small>Create a clean invoice for changes, extra pages or other new work without old paid milestones.</small></button>
+      </div>
+    </Modal>
+
     <Modal open={Boolean(mobileActions)} onClose={() => setMobileActions(null)} title="Invoice actions" description={mobileActions ? `${mobileActions.reference || 'Invoice'} · ${mobileActions.project_title || 'Project invoice'}` : undefined} size="sm">
       {mobileActions && <div className="invoice-actions-dialog" role="menu">{actionItems(mobileActions, () => setMobileActions(null))}</div>}
     </Modal>
 
-    <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editorIntent === 'renewal-setup' ? 'Set up annual renewal' : editing === 'new' ? 'Create an invoice' : 'Edit invoice'} description={editorIntent === 'renewal-setup' ? 'Add the annual renewal amount and service expiry date, then review the charges for this cycle.' : 'Add your client, project amount, payment phases and annual renewal in one place.'} size="xl" footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="invoice-form" loading={saving}>{editorIntent === 'renewal-setup' ? 'Save & prepare renewal' : editing === 'new' ? 'Create invoice' : 'Save changes'}</Button></>}>
+    <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editorIntent === 'renewal-setup' ? 'Set up annual renewal' : editing === 'new' ? editorIntent === 'new-work' ? 'Invoice new work' : 'Create an invoice' : 'Edit invoice'} description={editorIntent === 'renewal-setup' ? 'Add the annual renewal amount and service expiry date, then review the charges for this cycle.' : editorIntent === 'new-work' ? 'Bill this client for website changes, extra pages or other new work. Save the invoice to prepare a message with its payment link.' : 'Add your client, project amount, payment phases and annual renewal in one place.'} size="xl" footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" form="invoice-form" loading={saving}>{editorIntent === 'renewal-setup' ? 'Save & prepare renewal' : editing === 'new' ? editorIntent === 'new-work' ? 'Create & prepare message' : 'Create invoice' : 'Save changes'}</Button></>}>
       <form id="invoice-form" className={`invoice-form${editorIntent === 'renewal-setup' ? ' invoice-form--renewal-first' : editing !== 'new' ? ' invoice-form--payments-first' : ''}`} onSubmit={save}>
-        <section className="invoice-client-editor">
-          <div><p className="eyebrow">Client details</p><h3>Who is this invoice for?</h3><p>New clients are saved to Clients and can be selected when creating an agreement.</p></div>
-          <Select label="Client option" value={clientMode} disabled={saving} onChange={event => setClientMode(event.target.value as 'existing' | 'new')}><option value="existing">Select an existing client</option><option value="new">Create a new client</option></Select>
-          {clientMode === 'new' ? <div className="form-grid">
-            <Input label="Client name" value={newClient.name || ''} onChange={event => setNewClient({ ...newClient, name: event.target.value })} maxLength={160} autoComplete="name" required />
+        <section ref={clientPickerRef} className="proposal-client-picker" aria-labelledby="invoice-client-heading" aria-describedby={clientValidationError ? 'invoice-client-error' : undefined} aria-invalid={Boolean(clientValidationError)}>
+          <div className="proposal-client-picker__heading">
+            <div><span className="field__label" id="invoice-client-heading">Link this invoice to a client</span><small>The selected CRM record remains connected to this invoice.</small></div>
+            <div className="proposal-client-mode" role="group" aria-label="Invoice client source">
+              <button type="button" disabled={saving} aria-pressed={clientMode === 'existing'} className={clientMode === 'existing' ? 'active' : ''} onClick={() => switchClientMode('existing')}><Users size={15} />Existing client</button>
+              <button type="button" disabled={saving} aria-pressed={clientMode === 'new'} className={clientMode === 'new' ? 'active' : ''} onClick={() => switchClientMode('new')}><UserPlus size={15} />New client</button>
+            </div>
+          </div>
+
+          {clientMode === 'existing' ? <>
+            <SearchInput label="Search client records" value={clientQuery} onChange={setClientQuery} placeholder="Search name, company, email or phone…" />
+            {selectedClient && <div className="proposal-selected-client">
+              <span className="proposal-selected-client__check"><Check size={16} /></span>
+              <div><strong>{selectedClient.name}</strong><small>{selectedClient.company || 'Independent client'}</small></div>
+              <div className="proposal-selected-client__contact">{selectedClient.email && <span><Mail size={13} />{selectedClient.email}</span>}{selectedClient.phone && <span><Phone size={13} />{selectedClient.phone}</span>}</div>
+              {clients.some((client) => String(client.id) === String(selectedClient.id))
+                ? <Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(String(selectedClient.id))}`}>View profile</Link>
+                : <span className="field-hint">Historical client record</span>}
+            </div>}
+            <div className="proposal-client-list" role="group" aria-label="Invoice client records">
+              {availableClients.map((client) => {
+                const selected = String(client.id) === String(form.client_id)
+                return <button key={client.id} type="button" disabled={saving} aria-pressed={selected} className={`proposal-client-option${selected ? ' selected' : ''}`} onClick={() => selectClient(String(client.id))}>
+                  <span className="proposal-client-option__icon"><Building2 size={17} /></span>
+                  <span><strong>{client.name}</strong><small>{client.company || 'Independent client'}{client.status === 'archived' ? ' · Archived' : ''}</small><em>{[client.email, client.phone].filter(Boolean).join(' · ') || 'No contact details'}</em></span>
+                  {selected && <Check size={17} />}
+                </button>
+              })}
+              {!availableClients.length && <p className="proposal-client-empty">No client records match this search. Choose <strong>New client</strong> to add one.</p>}
+            </div>
+          </> : <div className="proposal-new-client form-grid">
+            <Input label="Client name" value={newClient.name || ''} error={clientValidationError} onChange={event => { setClientValidationError(''); setNewClient({ ...newClient, name: event.target.value }) }} maxLength={160} autoComplete="name" required />
             <Input label="Company" value={newClient.company || ''} onChange={event => setNewClient({ ...newClient, company: event.target.value })} maxLength={200} autoComplete="organization" optional />
-            <Input label="Email address" type="email" value={newClient.email || ''} onChange={event => setNewClient({ ...newClient, email: event.target.value })} autoComplete="email" optional />
-            <Input label="Phone number" type="tel" value={newClient.phone || ''} onChange={event => setNewClient({ ...newClient, phone: event.target.value })} maxLength={40} autoComplete="tel" placeholder="+94 71 123 4567" hint="Used for calls, WhatsApp and agreements." optional />
-            <Textarea className="form-grid__full" label="Address" value={newClient.address || ''} onChange={event => setNewClient({ ...newClient, address: event.target.value })} maxLength={1000} rows={2} autoComplete="street-address" optional />
-          </div> : <><SearchInput label="Search invoice client records" value={clientQuery} onChange={setClientQuery} placeholder="Search name, company, email or phone?" /><Select label="Client" value={String(form.client_id || '')} onChange={event => setForm({ ...form, client_id: event.target.value })} required><option value="">Select a client…</option>{clients.filter(client => String(client.id) === String(form.client_id) || [client.name, client.company, client.email, client.phone].join(' ').toLowerCase().includes(clientQuery.toLowerCase())).map(client => <option key={client.id} value={String(client.id)}>{client.company ? `${client.company} — ${client.name}` : client.name}{client.status === 'archived' ? ' (archived)' : ''}</option>)}</Select>{form.client_id && <Link className="text-link" to={`/admin/clients?client=${encodeURIComponent(String(form.client_id))}`}>View client profile</Link>}{!clients.length && <p className="field-hint">No clients yet. Choose “Create a new client” above.</p>}</>}
+            <Input label="Client email" type="email" value={newClient.email || ''} onChange={event => setNewClient({ ...newClient, email: event.target.value })} autoComplete="email" optional />
+            <Input label="Client phone" type="tel" value={newClient.phone || ''} onChange={event => setNewClient({ ...newClient, phone: event.target.value })} maxLength={40} autoComplete="tel" placeholder="+94 71 123 4567" optional />
+            <Textarea className="form-grid__full" label="Client address" value={newClient.address || ''} onChange={event => setNewClient({ ...newClient, address: event.target.value })} maxLength={1000} rows={2} autoComplete="street-address" optional />
+            <p className="proposal-new-client__note form-grid__full"><UserPlus size={16} />This creates one reusable client record and links this invoice to it automatically.</p>
+          </div>}
+          {clientValidationError && clientMode === 'existing' && <p id="invoice-client-error" className="field__error proposal-client-error" role="alert">{clientValidationError}</p>}
         </section>
         <div className="form-grid">
-          <Input label="Project title" value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder="Website design & development" required />
+          <Input label={editorIntent === 'new-work' ? 'Work description' : 'Project title'} value={form.project_title || ''} onChange={(event) => setForm({ ...form, project_title: event.target.value })} placeholder={editorIntent === 'new-work' ? 'Website changes: new services page' : 'Website design & development'} required />
           <Input label="Reference" value={form.reference || ''} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Generated if left blank" optional />
-          <Input label={form.invoice_kind === 'renewal' ? 'Total renewal invoice amount' : 'Total project amount'} readOnly={form.invoice_kind === 'renewal'} type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => updateProjectValue(Number(event.target.value))} hint={form.invoice_kind === 'renewal' ? 'Calculated from the renewal service charges and any accepted surcharge.' : 'Start with 50/50, then add and adjust any number of instalments below.'} required />
-          <Select label="Project currency" value={form.currency || 'LKR'} onChange={(event) => changeProjectCurrency(event.target.value)}><option value="LKR">LKR — Sri Lankan rupee</option><option value="USD">USD — US dollar</option><option value="GBP">GBP — British pound</option>{form.currency && !['LKR', 'USD', 'GBP'].includes(form.currency) && <option value={form.currency}>{form.currency}</option>}</Select>
+          <Input label={form.invoice_kind === 'renewal' ? 'Total renewal invoice amount' : editorIntent === 'new-work' ? 'Amount for new work' : 'Total project amount'} readOnly={form.invoice_kind === 'renewal'} type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => updateProjectValue(Number(event.target.value))} hint={form.invoice_kind === 'renewal' ? 'Calculated from the renewal service charges and any accepted surcharge.' : editorIntent === 'new-work' ? 'One full payment is added automatically. Add payment phases below if you agree on instalments.' : 'Start with 50/50, then add and adjust any number of instalments below.'} required />
+          <Select label={editorIntent === 'new-work' ? 'Invoice currency' : 'Project currency'} value={form.currency || 'LKR'} onChange={(event) => changeProjectCurrency(event.target.value)}><option value="LKR">LKR — Sri Lankan rupee</option><option value="USD">USD — US dollar</option><option value="GBP">GBP — British pound</option>{form.currency && !['LKR', 'USD', 'GBP'].includes(form.currency) && <option value={form.currency}>{form.currency}</option>}</Select>
           <Input label="Issue date" type="date" value={form.issue_date?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, issue_date: event.target.value })} />
           <Input label="Due date" type="date" value={form.due_date?.slice(0, 10) || ''} onChange={(event) => setForm({ ...form, due_date: event.target.value })} />
           <Select label="Invoice status" value={form.status || 'draft'} onChange={(event) => setForm({ ...form, status: event.target.value })} hint="Partial, paid and overdue states are calculated from payments and dates."><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial" disabled>Partially paid (automatic)</option><option value="paid" disabled>Paid (automatic)</option><option value="overdue" disabled>Overdue (automatic)</option><option value="void">Void (PIN required)</option></Select>

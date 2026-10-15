@@ -49,7 +49,7 @@ def test_invoice_pdf_matches_client_document_and_embeds_logo_on_one_page(project
         "LKR 416,700.00", "LKR 116,700.00", "LKR 300,000.00", "LKR 20,000.00",
         "Bank transfer to Hich Web", "Thank you for choosing Hich Web.",
     ):
-        assert value in text
+        assert value in " ".join(text.split())
     assert "SECRET-ADMIN-NOTE" not in text
     assert "SECRET-SHARE-TOKEN" not in text
 
@@ -121,4 +121,29 @@ def test_invoice_pdf_receipt_ledger_paginates_and_never_prints_internal_notes():
     assert "LKR 2,000.00" in text and "RCT-00000079" in text
     assert "SECRET-INTERNAL-NOTES" not in text
     assert "<script>example</script>" in text
-    assert "Receipt" in reader.pages[1].extract_text()
+    assert "RECEIVED" in reader.pages[1].extract_text()
+    assert "METHOD" in reader.pages[1].extract_text()
+
+
+def test_invoice_pdf_uses_same_payment_prompt_and_partial_phase_state_as_page(project_invoice):
+    invoice = project_invoice | {"payment_instructions": None, "payments": [
+        {"name": "Website changes", "amount": 416700, "paid_amount": 116700, "is_paid": False},
+    ]}
+    reader, text = text_of(invoice_pdf(invoice))
+    for value in ("Part paid", "Payment details", "119020299485", "Please include INV-20261011-0042", "Oct 11, 2026"):
+        assert value in " ".join(text.split())
+    fonts = reader.pages[0]["/Resources"]["/Font"].get_object()
+    assert any("PlusJakartaSans-Bold" in str(font.get_object().get("/BaseFont")) for font in fonts.values())
+    assert invoice_pdf(invoice) == invoice_pdf(invoice), "Saving and downloading the unchanged invoice must produce the same PDF."
+
+
+def test_invoice_pdf_long_note_and_description_preserve_all_content(project_invoice):
+    invoice = project_invoice | {
+        "project_title": "Website changes " * 30,
+        "customer_note": "Please review the website changes carefully. " * 100 + "END-OF-CUSTOMER-NOTE",
+    }
+    reader, text = text_of(invoice_pdf(invoice))
+    assert len(reader.pages) > 1
+    assert "END-OF-CUSTOMER-NOTE" in text
+    assert "RCT-00000042" in text
+    assert "Thank you for your business." in text

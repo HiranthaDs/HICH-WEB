@@ -194,8 +194,14 @@ def test_public_pdf_checks_bearer_link_and_returns_download(settings: Settings) 
     assert result.content.startswith(b"%PDF")
     assert result.headers["content-type"] == "application/pdf"
     assert result.headers["cache-control"] == "no-store"
+    assert result.headers["content-disposition"].startswith('attachment; filename="')
+    preview = client.get(f"/public/invoices/{token}/pdf?inline=true")
+    assert preview.status_code == 200
+    assert preview.headers["content-disposition"].startswith('inline; filename="')
+    assert preview.content == result.content
     record["share_active"] = False
     assert client.get(f"/public/invoices/{token}/pdf").status_code == 404
+    assert client.get(f"/public/invoices/{token}/pdf?inline=true").status_code == 404
 
 
 def test_invoice_legacy_url_works_when_former_key_is_configured(settings: Settings) -> None:
@@ -207,6 +213,17 @@ def test_invoice_legacy_url_works_when_former_key_is_configured(settings: Settin
     record["share_token_hash"] = hash_public_token(f"invoice:{token}", "old-key")
     changed = settings.model_copy(update={"legacy_public_link_keys": SecretStr("old-key")})
     assert public_client(changed, record).get(f"/public/invoices/{token}").status_code == 200
+
+
+def test_invoice_legacy_url_survives_key_independent_hash_migration(settings: Settings) -> None:
+    from app.invoice_sharing import legacy_invoice_token
+    from app.security import hash_public_token
+
+    record = invoice_record()
+    token = legacy_invoice_token(record["id"], record["share_nonce"], "retired-key")
+    record["share_token_hash"] = hash_public_token(f"invoice:{token}", "")
+
+    assert public_client(settings, record).get(f"/public/invoices/{token}").status_code == 200
 
 
 @pytest.mark.parametrize("initial", ["unpublished", "unrecoverable-legacy", "v2"])
