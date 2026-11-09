@@ -41,7 +41,7 @@ const navItems = [
   { to: '/admin/activity', label: 'Activity', icon: Activity },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]
-const mobileNavItems = navItems.filter(item => ['/admin', '/admin/clients', '/admin/proposals', '/admin/agreements', '/admin/invoices'].includes(item.to))
+const mobileNavItems = navItems.filter(item => ['/admin', '/admin/clients', '/admin/agreements', '/admin/invoices'].includes(item.to))
 
 type SearchResult = { id: string; title: string; detail: string; category: string; destination: string; icon: typeof Users }
 
@@ -103,6 +103,12 @@ export function AdminLayout() {
   const navigate = useNavigate()
 
   useEffect(() => { setMobileOpen(false) }, [location.pathname])
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 761px)')
+    const closeDrawer = () => { if (desktop.matches) setMobileOpen(false) }
+    desktop.addEventListener('change', closeDrawer)
+    return () => desktop.removeEventListener('change', closeDrawer)
+  }, [])
   useEffect(() => { localStorage.setItem('hich-sidebar-collapsed', String(collapsed)) }, [collapsed])
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -141,7 +147,7 @@ export function AdminLayout() {
   const nav = (
     <>
       <div className="sidebar__brand"><Brand inverse compact={collapsed} to="/admin" /><span className="sidebar__workspace">CLIENT WORKSPACE</span></div>
-      <nav className="sidebar__nav" aria-label="Admin navigation">
+      <nav className="sidebar__nav" aria-label="Admin navigation" onClick={() => setMobileOpen(false)}>
         {navItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link--active' : ''}`} title={collapsed ? label : undefined}>
             <Icon size={19} aria-hidden="true" /><span>{label}</span>
@@ -170,7 +176,7 @@ export function AdminLayout() {
       </aside>
 
       {mobileOpen && <div className="mobile-drawer__backdrop" onClick={() => setMobileOpen(false)} />}
-      {mobileOpen && <aside ref={drawerRef} className="mobile-drawer mobile-drawer--open" role="dialog" aria-modal="true" aria-label="Workspace navigation">
+      {mobileOpen && <aside id="mobile-workspace-navigation" ref={drawerRef} className="mobile-drawer mobile-drawer--open" role="dialog" aria-modal="true" aria-label="Workspace navigation">
         <button className="mobile-drawer__close icon-button" type="button" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X size={20} /></button>
         {nav}
       </aside>}
@@ -191,9 +197,10 @@ export function AdminLayout() {
       <nav className="mobile-admin-nav" aria-label="Primary admin navigation">
         {mobileNavItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? 'active' : ''}>
-            <Icon size={19} /><span>{label === 'Agreements' ? 'Agreements' : label}</span>
+            <Icon size={20} aria-hidden="true" /><span>{label === 'Overview' ? 'Home' : label}</span>
           </NavLink>
         ))}
+        <button type="button" onClick={() => setMobileOpen(true)} aria-label="More workspace pages" aria-expanded={mobileOpen} aria-controls={mobileOpen ? 'mobile-workspace-navigation' : undefined} className={mobileOpen || !mobileNavItems.some(item => item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)) ? 'active' : ''}><Menu size={20} aria-hidden="true" /><span>More</span></button>
       </nav>
       <WorkspaceSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>

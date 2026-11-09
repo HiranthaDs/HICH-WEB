@@ -65,18 +65,18 @@ const base = process.env.UI_BASE_URL || 'http://127.0.0.1:5174';
       await page.waitForSelector('.client-profile'); await noOverflow(`Client profile ${width}`);
       await click('New work invoice', '.client-profile');
       await page.waitForSelector('#invoice-form');
-      assert.equal(await page.$eval(await field('Client'), element => element.value), client.id);
+      assert.equal(await page.$eval('.proposal-client-option[aria-pressed="true"] strong', element => element.textContent), client.name);
       assert.equal(await page.$eval(await field('Work description'), element => element.value), '');
       assert.equal(await page.$$eval('.milestone-row', elements => elements.length), 1);
       assert.equal(new URL(page.url()).searchParams.has('create'), false, 'Reload should not reopen a consumed create request');
       await fill('Work description', `Website changes at ${width}px`);
       await fill('Amount for new work', '12500.50');
       await fill('Amount for new work', '15000.75');
-      assert.equal(await page.$eval(await field('Amount'), element => element.value), '15000.75');
+      assert.equal(await page.$eval(await field('Amount'), element => element.value), '15,000.75');
       assert.equal(await page.$eval(await field('Optional visiting fee (LKR)'), element => element.value), '');
       await noOverflow(`New work form ${width}`);
       if (width === 390) {
-        await click('Add phase');
+        await click('Add payment stage');
         assert.equal(await page.$$eval('.milestone-row', elements => elements.length), 2, 'Instalments remain available');
       }
       await click('Create & prepare message', '.modal');

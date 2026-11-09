@@ -157,12 +157,12 @@ export function ClientsPage() {
 
       <Modal open={Boolean(editing)} onClose={() => { if (!saving) setEditing(null) }} title={editing === 'new' ? 'Add a client' : 'Edit client'} description="Contact details are used for agreements, invoices and reminders." footer={<><Button variant="ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button><Button loading={saving} type="submit" form="client-form">{editing === 'new' ? 'Add client' : 'Save changes'}</Button></>}>
         <form id="client-form" className="form-grid" onSubmit={save}>
-          <Input label="Client name" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Full name" required />
-          <Input label="Company" value={form.company || ''} onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder="Company or organisation" optional />
-          <Input label="Email address" type="email" value={form.email || ''} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="client@example.com" optional />
-          <Input label="Phone number" type="tel" value={form.phone || ''} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+94 …" hint="Include the country code for WhatsApp reminders." optional />
+          <Input label="Client name" autoComplete="name" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Full name" required />
+          <Input label="Company" autoComplete="organization" value={form.company || ''} onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder="Company or organisation" optional />
+          <Input label="Email address" autoComplete="email" type="email" value={form.email || ''} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="client@example.com" optional />
+          <Input label="Phone number" autoComplete="tel" type="tel" value={form.phone || ''} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+94 …" hint="Include the country code for WhatsApp reminders." optional />
           <Select label="Relationship status" value={form.status || 'active'} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="active">Active</option><option value="lead">Lead</option><option value="archived">Archived</option></Select>
-          <Textarea className="form-grid__full" label="Address" value={form.address || ''} onChange={event => setForm({ ...form, address: event.target.value })} rows={2} maxLength={1000} optional />
+          <Textarea className="form-grid__full" label="Address" autoComplete="street-address" value={form.address || ''} onChange={event => setForm({ ...form, address: event.target.value })} rows={2} maxLength={1000} optional />
           <Textarea className="form-grid__full" label="Internal notes" value={form.notes || ''} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={4} placeholder="Helpful context for the team…" optional />
         </form>
       </Modal>

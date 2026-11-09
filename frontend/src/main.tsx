@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { preloadPublicDocument } from './lib/api'
 import './styles.css'
+import './admin-mobile.css'
 
 const preloadReloadKey = 'hich-preload-reload-at'
 window.addEventListener('vite:preloadError', (event) => {

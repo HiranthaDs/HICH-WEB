@@ -72,7 +72,7 @@ const base = process.env.UI_BASE_URL || 'http://127.0.0.1:5174';
     });
     assert.equal(values.phone, fixtures.client.phone);
     assert.equal(values.project, fixtures.invoice.project_title);
-    assert.equal(Number(values.budget), fixtures.invoice.amount);
+    assert.equal(Number(values.budget.replaceAll(',', '')), fixtures.invoice.amount);
     const versionLabels = await page.$$eval('.agreement-version-picker label', labels => labels.map(label => label.textContent.trim()));
     assert.deepEqual(versionLabels.length, 2);
 

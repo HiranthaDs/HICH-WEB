@@ -11,7 +11,13 @@ fs.mkdirSync(output, { recursive: true });
 const compiled = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../frontend/src/lib/paymentPlan.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
 const plan = {}; new Function('exports', compiled.outputText)(plan);
 const split = plan.addPaymentPhase([{ id: 'final', name: 'Final', amount: 100, paid_amount: 90 }], 100, 'Third instalment');
-assert.equal(split[0].amount, 5); assert.equal(split[1].amount, 95); assert.equal(split[1].paid_amount, 90);
+assert.equal(split[0].amount, 95); assert.equal(split[0].paid_amount, 90); assert.equal(split[1].amount, 5);
+assert.equal(split[0].id, 'final', 'A partially received stage stays ahead of the added stage');
+const custom = plan.addPaymentPhase([{ id: 'final', name: 'Final', amount: 100, paid_amount: 90 }], 100, 'Fourth payment', 3.25);
+assert.equal(custom[0].amount, 96.75); assert.equal(custom[1].amount, 3.25);
+assert.equal(custom.reduce((sum, phase) => sum + phase.amount, 0), 100);
+assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, paid_amount: 90 }], 100, 'Extra', 11), /Leave at least/);
+assert.throws(() => plan.addPaymentPhase([], 100, 'Extra', -10), /positive amount/);
 assert.equal(plan.addPaymentPhase([{ name: 'Advance', amount: 0.02 }], 0.02, 'Final')[0].amount, 0.01);
 assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid: true }], 100, 'Extra'), /no unpaid balance/);
 
@@ -104,8 +110,8 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     }));
     assert.ok(invoiceNavigation.current?.startsWith('Pending')); assert.equal(invoiceNavigation.completed, true); assert.equal(invoiceNavigation.actions, 1);
     checks.push('Pending invoices are the default, Completed is separate, and the source invoice has one Actions button');
-    await invoiceAction('INV-PROJECT', 'Edit payments');
-    for (let i = 0; i < 4; i++) await click('Add phase');
+    await invoiceAction('INV-PROJECT', 'Edit invoice');
+    for (let i = 0; i < 4; i++) await click('Add payment stage');
     await click('Add mid payment');
     assert.equal(await page.$$eval('.milestone-row', rows => rows.length), 10);
     await click('Save changes', '.modal'); await page.waitForSelector('.share-panel textarea');
@@ -122,7 +128,7 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await click('Save & prepare renewal', '.modal');
     await page.waitForSelector('#renewal-invoice-form');
     assert.equal(writes.filter(write => write.endpoint === '/invoices/source-1/share').length, projectSharesBeforeSetup);
-    assert.equal(await page.$eval(await field('Service amount 1'), element => element.value), '12000');
+    assert.equal(await page.$eval(await field('Service amount 1'), element => element.value), '12,000');
     checks.push('Incomplete renewal setup saves the annual charge and continues to renewal preparation without opening the original project invoice message');
 
     await go('/admin/invoices?section=renewals&renewal=source-1');
@@ -130,12 +136,12 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     assert.equal(await page.$eval('.invoice-sections [aria-current="page"]', element => element.textContent.trim().startsWith('Renewals')), true);
     assert.deepEqual(renewalLookups, [past, past]);
     assert.equal(await page.$eval(await field('Billing currency'), e => e.value), 'LKR');
-    await fill('Service description 1', 'example.test domain renewal'); await page.select(await field('Service 1'), 'domain'); assert.equal(await page.$eval(await field('Service description 1'), e => e.value), 'example.test domain renewal'); await fill('Service amount 1', '4000'); await click('Add service'); await fill('Service amount 2', '8000');
+    await fill('Service description 1', 'example.test domain renewal'); await fill('Service name 1', 'Domain'); assert.equal(await page.$eval(await field('Service description 1'), e => e.value), 'example.test domain renewal'); await fill('Service amount 1', '4000'); await click('Add service'); await fill('Service name 2', 'Hosting'); await fill('Service description 2', 'Hosting renewal'); await fill('Service amount 2', '8000');
     assert.equal(await page.$eval('.renewal-fee-options label:nth-child(2) input', e => e.disabled), true);
     await page.click('.renewal-fee-options label:nth-child(1) input'); await page.click('.renewal-fee-options label:nth-child(2) input');
     for (const width of [390, 320]) { await page.setViewport({ width, height: 844 }); await noOverflow(`Renewal form ${width}`); }
     await page.setViewport({ width: 1440, height: 1000 }); await click('Create & record payment'); await page.waitForSelector('#receipt-form');
-    await fill('Payment amount (LKR)', '5000'); await fill('Transfer / receipt reference', 'RENEWAL-PARTIAL'); await click('Save payment & prepare receipt'); await page.waitForSelector('.share-panel textarea');
+    await fill('Payment amount (LKR)', '5000'); await fill('Transfer / receipt reference', 'RENEWAL-PARTIAL'); await click('Save payment'); await page.waitForSelector('.share-panel textarea');
     assert.equal(renewal.amount, 14160); assert.equal(renewal.status, 'partial');
     assert.ok((await page.$eval('.share-panel textarea', e => e.value)).includes('9,160'));
     hideRenewalFromList = true;
@@ -146,7 +152,7 @@ assert.throws(() => plan.addPaymentPhase([{ name: 'Final', amount: 100, is_paid:
     await click('Record payment', '.renewal-review'); await page.waitForSelector('#receipt-form');
     hideRenewalFromList = false;
     checks.push('Deep link opens renewal form, custom descriptions survive service changes, authoritative cycle lookup reuses a partial invoice missing from the list');
-    await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment & prepare receipt'); await page.waitForSelector('.share-panel textarea');
+    await fill('Transfer / receipt reference', 'RENEWAL-FINAL'); await click('Save payment'); await page.waitForSelector('.share-panel textarea');
     const message = await page.$eval('.share-panel textarea', e => e.value);
     assert.equal(renewal.status, 'paid'); assert.equal(renewal.payment_records.length, 2);
     assert.ok(message.includes('RCT-00000002') && message.replace(/\s/g, ' ').includes('Remaining balance: LKR 0.00'));

@@ -1,8 +1,10 @@
 export const formatCurrency = (value = 0, currency = 'LKR') => {
   try {
-    return new Intl.NumberFormat('en-LK', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency,
+      currencyDisplay: 'code',
+      useGrouping: true,
       maximumFractionDigits: 2,
     }).format(value)
   } catch {

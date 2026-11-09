@@ -1,0 +1,191 @@
+{
+  "checks": [
+    "Record payment 320",
+    "Compact plan 320",
+    "Add stage 320",
+    "Receipt history 320",
+    "Record payment 360",
+    "Compact plan 360",
+    "Add stage 360",
+    "Receipt history 360",
+    "Record payment 390",
+    "Compact plan 390",
+    "Add stage 390",
+    "Receipt history 390",
+    "Record payment 430",
+    "Compact plan 430",
+    "Add stage 430",
+    "Receipt history 430",
+    "Record payment 740",
+    "Compact plan 740",
+    "Add stage 740",
+    "Receipt history 740",
+    "Record payment 768",
+    "Compact plan 768",
+    "Add stage 768",
+    "Receipt history 768",
+    "Record payment 1440",
+    "Compact plan 1440",
+    "Add stage 1440",
+    "Receipt history 1440",
+    "Save above keyboard",
+    "First, second and partial third payments; numeric API amounts; failed-save retry",
+    "Fourth stage preview, balanced plan, existing receipts preserved, fourth payment recorded",
+    "Receipt correction keeps totals and original receipt identity",
+    "Decimal entry and required / maximum amount validation",
+    "Million formatting, comma deletion, cursor editing and exact cent balances",
+    "Edit payments opens the dedicated plan directly on phones"
+  ],
+  "errors": [],
+  "writes": [
+    {
+      "endpoint": "/invoices/invoice-1/payments",
+      "method": "POST",
+      "data": {
+        "milestone_id": "first",
+        "amount": 60000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "BANK-first",
+        "paid_at": "2026-11-09T06:30:00.000Z",
+        "idempotency_key": "7f3f94bb-9682-47ea-99f8-d79ca2bb8216"
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1/payments",
+      "method": "POST",
+      "data": {
+        "milestone_id": "first",
+        "amount": 60000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "BANK-first",
+        "paid_at": "2026-11-09T06:30:00.000Z",
+        "idempotency_key": "7f3f94bb-9682-47ea-99f8-d79ca2bb8216"
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1/payments",
+      "method": "POST",
+      "data": {
+        "milestone_id": "second",
+        "amount": 90000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "BANK-second",
+        "paid_at": "2026-11-09T06:30:00.000Z",
+        "idempotency_key": "a0d4561d-dd4b-492a-a37e-55fe4fd92f46"
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1/payments",
+      "method": "POST",
+      "data": {
+        "milestone_id": "third",
+        "amount": 25000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "BANK-third",
+        "paid_at": "2026-11-09T06:30:00.000Z",
+        "idempotency_key": "064d2c08-d0b8-4b27-b292-9369a7b4e957"
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1",
+      "method": "PUT",
+      "data": {
+        "payments": [
+          {
+            "id": "first",
+            "name": "Advance payment",
+            "amount": 60000,
+            "paid_amount": 60000,
+            "is_paid": true
+          },
+          {
+            "id": "second",
+            "name": "Design approval",
+            "amount": 90000,
+            "paid_amount": 90000,
+            "is_paid": true
+          },
+          {
+            "id": "third",
+            "name": "Launch payment",
+            "amount": 100000,
+            "paid_amount": 25000,
+            "is_paid": false
+          },
+          {
+            "name": "Additional payment",
+            "amount": 50000,
+            "is_paid": false,
+            "status": "Pending"
+          }
+        ],
+        "expected_revision": 3
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1",
+      "method": "PUT",
+      "data": {
+        "payments": [
+          {
+            "id": "first",
+            "name": "Advance payment",
+            "amount": 60000,
+            "paid_amount": 60000,
+            "is_paid": true
+          },
+          {
+            "id": "second",
+            "name": "Design approval",
+            "amount": 90000,
+            "paid_amount": 90000,
+            "is_paid": true
+          },
+          {
+            "id": "third",
+            "name": "Launch payment",
+            "amount": 100000,
+            "paid_amount": 25000,
+            "is_paid": false
+          },
+          {
+            "name": "Additional payment",
+            "amount": 50000,
+            "is_paid": false,
+            "status": "Pending"
+          }
+        ],
+        "expected_revision": 3
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1/payments",
+      "method": "POST",
+      "data": {
+        "milestone_id": "stage-4",
+        "amount": 50000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "",
+        "paid_at": "2026-11-09T06:30:00.000Z",
+        "idempotency_key": "700f5b65-dc89-4b41-9c88-2745472daad5"
+      }
+    },
+    {
+      "endpoint": "/invoices/invoice-1/payments/receipt-1",
+      "method": "PUT",
+      "data": {
+        "milestone_id": "first",
+        "amount": 60000,
+        "currency": "LKR",
+        "method": "Bank transfer",
+        "reference": "CORRECTED-REF",
+        "paid_at": "2026-11-09T06:30:00.000Z"
+      }
+    }
+  ]
+}

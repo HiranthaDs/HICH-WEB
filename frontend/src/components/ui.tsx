@@ -64,7 +64,7 @@ export function Input({ label, hint, error, optional, className, id, ...props }:
   return (
     <label className={classNames('field', className)} htmlFor={inputId}>
       {label && <span className="field__label">{label}{optional && <em>Optional</em>}</span>}
-      <input id={inputId} className={classNames('input', error && 'input--error')} aria-invalid={Boolean(error)} aria-describedby={error || hint ? `${inputId}-help` : undefined} {...props} />
+      <input id={inputId} inputMode={props.type === 'number' ? (props.step && props.step !== 1 && props.step !== '1' ? 'decimal' : 'numeric') : undefined} className={classNames('input', error && 'input--error')} aria-invalid={Boolean(error)} aria-describedby={error || hint ? `${inputId}-help` : undefined} {...props} />
       {(error || hint) && <small id={`${inputId}-help`} className={error ? 'field__error' : 'field__hint'}>{error || hint}</small>}
     </label>
   )
@@ -107,7 +107,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search…', label 
     <label className="search-box">
       <span className="sr-only">{label}</span>
       <Search size={17} aria-hidden="true" />
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+      <input type="search" enterKeyHint="search" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
       {value && <button type="button" onClick={() => onChange('')} aria-label="Clear search"><X size={15} /></button>}
     </label>
   )
